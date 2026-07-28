@@ -38,7 +38,7 @@ cp "${DIST_DIR}/server" "${APP_STAGE}/server"
 chmod +x "${APP_STAGE}/server"
 cp -R "${FRONTEND_DIR}/dist/." "${APP_STAGE}/ui/"
 cp "${PACKAGE_DIR}/ui/config" "${APP_STAGE}/ui/config"
-cp "${PACKAGE_DIR}/ICON.PNG" "${APP_STAGE}/ui/images/icon_32.png"
+cp "${PACKAGE_DIR}/ICON.PNG" "${APP_STAGE}/ui/images/icon_64.png"
 cp "${PACKAGE_DIR}/ICON_256.PNG" "${APP_STAGE}/ui/images/icon_256.png"
 
 if [ "${SKIP_FNPACK:-0}" = "1" ]; then
