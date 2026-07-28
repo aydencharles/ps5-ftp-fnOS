@@ -38,8 +38,13 @@ cp "${DIST_DIR}/server" "${APP_STAGE}/server"
 chmod +x "${APP_STAGE}/server"
 cp -R "${FRONTEND_DIR}/dist/." "${APP_STAGE}/ui/"
 cp "${PACKAGE_DIR}/ui/config" "${APP_STAGE}/ui/config"
-cp "${PACKAGE_DIR}/ICON.PNG" "${APP_STAGE}/ui/images/icon_64.png"
-cp "${PACKAGE_DIR}/ICON_256.PNG" "${APP_STAGE}/ui/images/icon_256.png"
+
+for icon_file in icon_64.png icon_256.png; do
+  if [ ! -f "${APP_STAGE}/ui/images/${icon_file}" ]; then
+    echo "missing desktop icon: ui/images/${icon_file}" >&2
+    exit 1
+  fi
+done
 
 if [ "${SKIP_FNPACK:-0}" = "1" ]; then
   echo "==> SKIP_FNPACK=1; staged runtime is ready at ${APP_STAGE}"
