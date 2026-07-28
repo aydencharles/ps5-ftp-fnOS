@@ -1,0 +1,4 @@
+#!/bin/bash
+set -u
+echo "PS5 FTP Manager 不依赖 curlftpfs、rclone 或 lftp。请确保 PS5 与 NAS 位于可信局域网。" > "${TRIM_TEMP_LOGFILE:-/dev/null}"
+exit 0

@@ -1,0 +1,13 @@
+{
+  ".url": {
+    "ps5-ftp-manager.Application": {
+      "title": "PS5 FTP Manager",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "http",
+      "port": "8100",
+      "url": "/",
+      "allUsers": true
+    }
+  }
+}

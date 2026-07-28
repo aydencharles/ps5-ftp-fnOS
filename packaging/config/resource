@@ -1,0 +1,12 @@
+{
+  "data-share": {
+    "shares": [
+      {
+        "name": "ps5-ftp-manager",
+        "permission": {
+          "rw": ["root"]
+        }
+      }
+    ]
+  }
+}

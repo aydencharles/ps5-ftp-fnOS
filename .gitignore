@@ -1,0 +1,10 @@
+.DS_Store
+dist/
+packaging/app/
+src/frontend/node_modules/
+src/frontend/dist/
+src/frontend/*.tsbuildinfo
+*.db
+*.db-shm
+*.db-wal
+*.log

@@ -1,0 +1,112 @@
+#!/bin/bash
+# fnOS lifecycle entrypoint: start | stop | status
+set -u
+
+APP_NAME="${TRIM_APPNAME:-ps5-ftp-manager}"
+APP_DIR="${TRIM_APPDEST:-}"
+DATA_DIR="${TRIM_PKGVAR:-/tmp}"
+TEMP_DIR="${TRIM_PKGTMP:-${DATA_DIR}/tmp}"
+PORT="${TRIM_SERVICE_PORT:-8100}"
+SERVER="${APP_DIR}/server"
+PID_FILE="${DATA_DIR}/${APP_NAME}.pid"
+LOG_FILE="${DATA_DIR}/server.log"
+TEMP_LOG="${TRIM_TEMP_LOGFILE:-${DATA_DIR}/temp.log}"
+
+log_error() {
+  {
+    echo "$1"
+    if [ -f "${LOG_FILE}" ]; then
+      echo "--- server.log ---"
+      tail -n 20 "${LOG_FILE}" 2>/dev/null || true
+    fi
+  } > "${TEMP_LOG}" 2>/dev/null || true
+}
+
+prepare_runtime() {
+  if ! mkdir -p "${DATA_DIR}" "${TEMP_DIR}" 2>/dev/null; then
+    log_error "unable to create runtime directories: ${DATA_DIR}, ${TEMP_DIR}"
+    return 1
+  fi
+  export PORT="${PORT}"
+  export TRIM_APPNAME="${APP_NAME}"
+  export TRIM_APPDEST="${APP_DIR}"
+  export TRIM_PKGVAR="${DATA_DIR}"
+  export TRIM_PKGTMP="${TEMP_DIR}"
+  export TRIM_SERVICE_PORT="${PORT}"
+  export APP_DIR="${APP_DIR}"
+  export UI_DIR="${UI_DIR:-${APP_DIR}/ui}"
+  export PATH="${PATH:-/usr/bin:/bin}:/usr/sbin:/sbin:/usr/local/bin:/usr/local/sbin"
+}
+
+start_server() {
+  if [ -z "${APP_DIR}" ]; then
+    log_error "TRIM_APPDEST is not set"
+    exit 1
+  fi
+  if [ ! -f "${SERVER}" ]; then
+    log_error "server binary not found at ${SERVER}"
+    exit 1
+  fi
+  if [ ! -x "${SERVER}" ]; then
+    chmod +x "${SERVER}" 2>/dev/null || true
+  fi
+  if [ ! -x "${SERVER}" ]; then
+    log_error "server binary is not executable at ${SERVER}"
+    exit 1
+  fi
+  if ! prepare_runtime; then
+    exit 1
+  fi
+  if [ -f "${PID_FILE}" ] && kill -0 "$(cat "${PID_FILE}")" 2>/dev/null; then
+    exit 0
+  fi
+  rm -f "${PID_FILE}"
+  nohup "${SERVER}" >> "${LOG_FILE}" 2>&1 &
+  SERVER_PID=$!
+  echo "${SERVER_PID}" > "${PID_FILE}"
+
+  # Give immediate startup errors (bad database path, occupied port, wrong
+  # architecture) time to surface. HTTP tools vary between fnOS releases, so
+  # they are useful diagnostics but are not a hard lifecycle dependency.
+  sleep 1
+  if kill -0 "${SERVER_PID}" 2>/dev/null; then
+    if command -v curl >/dev/null 2>&1; then
+      curl --fail --silent --max-time 1 "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1 || true
+    elif command -v wget >/dev/null 2>&1; then
+      wget -q -T 1 -O /dev/null "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1 || true
+    fi
+    exit 0
+  fi
+
+  rm -f "${PID_FILE}"
+  log_error "server exited during startup; see ${LOG_FILE}"
+  exit 1
+}
+
+stop_server() {
+  if [ -f "${PID_FILE}" ]; then
+    SERVER_PID="$(cat "${PID_FILE}")"
+    if kill -0 "${SERVER_PID}" 2>/dev/null; then
+      kill "${SERVER_PID}" 2>/dev/null || true
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        ! kill -0 "${SERVER_PID}" 2>/dev/null && break
+        sleep 1
+      done
+      kill -0 "${SERVER_PID}" 2>/dev/null && kill -9 "${SERVER_PID}" 2>/dev/null || true
+    fi
+    rm -f "${PID_FILE}"
+  fi
+  exit 0
+}
+
+status_server() {
+  [ -f "${PID_FILE}" ] && kill -0 "$(cat "${PID_FILE}")" 2>/dev/null && exit 0
+  exit 3
+}
+
+case "${1:-}" in
+  start) start_server ;;
+  stop) stop_server ;;
+  status) status_server ;;
+  *) exit 1 ;;
+esac

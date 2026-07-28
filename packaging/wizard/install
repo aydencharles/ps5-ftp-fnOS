@@ -1,0 +1,11 @@
+[
+  {
+    "stepTitle": "安装 PS5 FTP Manager",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "应用将以 root 运行以浏览 fnOS 存储卷。应用没有登录验证，请仅在可信局域网内使用。"
+      }
+    ]
+  }
+]

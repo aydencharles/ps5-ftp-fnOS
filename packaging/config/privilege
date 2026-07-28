@@ -1,0 +1,7 @@
+{
+  "defaults": {
+    "run-as": "root"
+  },
+  "username": "ps5-ftp-manager",
+  "groupname": "ps5-ftp-manager"
+}

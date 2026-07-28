@@ -1,0 +1,12 @@
+appname               = ps5-ftp-manager
+version               = 0.1.0
+display_name          = PS5 FTP Manager
+desc                  = 面向 PS5 FTP 服务的飞牛 fnOS 游戏文件传输与文件管理工具，支持持久化任务、实时进度、ETA 和取消。
+arch                  = x86_64
+source                = thirdparty
+maintainer            = PS5 FTP Manager Community
+distributor           = community
+desktop_uidir         = ui
+desktop_applaunchname = ps5-ftp-manager.Application
+service_port          = 8100
+checkport             = true
