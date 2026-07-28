@@ -20,6 +20,8 @@
   ·
   <b><a href="#使用">使用</a></b>
   ·
+  <b><a href="#截图">截图</a></b>
+  ·
   <b><a href="#开发">开发</a></b>
   ·
   <b><a href="#致谢">致谢</a></b>
@@ -41,6 +43,24 @@
   面向 <b>飞牛 fnOS</b> 的第三方应用（<code>.fpk</code>），可将目录与游戏镜像上传到 PS5、<br/>
   将 PS5 文件下载至 fnOS，并通过 <b>zftpd</b> 或 <b>ftpsrv</b> 管理远端文件。
 </p>
+
+<br>
+
+# 截图
+
+<div align="center">
+  <a href="assets/screenshots_01.png">
+    <img src="assets/screenshots_01.png" alt="fnOS 存储浏览" width="31%" style="padding: 4px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px;" />
+  </a>
+  <a href="assets/screenshots_02.png">
+    <img src="assets/screenshots_02.png" alt="传输任务中心" width="31%" style="padding: 4px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px;" />
+  </a>
+  <a href="assets/screenshots_03.png">
+    <img src="assets/screenshots_03.png" alt="PS5 文件管理器" width="31%" style="padding: 4px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px;" />
+  </a>
+</div>
+
+<p align="center"><sub>fnOS 存储浏览 &nbsp;·&nbsp; 实时传输任务 &nbsp;·&nbsp; PS5 文件管理器</sub></p>
 
 <br>
 
