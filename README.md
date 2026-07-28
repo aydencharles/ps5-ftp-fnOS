@@ -20,6 +20,8 @@
   ·
   <b><a href="#usage">Usage</a></b>
   ·
+  <b><a href="#screenshots">Screenshots</a></b>
+  ·
   <b><a href="#build">Build</a></b>
   ·
   <b><a href="#acknowledgement">Acknowledgement</a></b>
@@ -41,6 +43,24 @@
   A third-party <b>fnOS</b> app (<code>.fpk</code>) for uploading folders and game images to a PS5,<br/>
   downloading PS5 files to fnOS, and managing remote files through <b>zftpd</b> or <b>ftpsrv</b>.
 </p>
+
+<br>
+
+# Screenshots
+
+<div align="center">
+  <a href="assets/screenshots_01.png">
+    <img src="assets/screenshots_01.png" alt="fnOS storage browser" width="31%" style="padding: 4px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px;" />
+  </a>
+  <a href="assets/screenshots_02.png">
+    <img src="assets/screenshots_02.png" alt="Transfer task center" width="31%" style="padding: 4px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px;" />
+  </a>
+  <a href="assets/screenshots_03.png">
+    <img src="assets/screenshots_03.png" alt="PS5 file manager" width="31%" style="padding: 4px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 12px;" />
+  </a>
+</div>
+
+<p align="center"><sub>fnOS storage browser &nbsp;·&nbsp; Real-time transfer tasks &nbsp;·&nbsp; PS5 file manager</sub></p>
 
 <br>
 
