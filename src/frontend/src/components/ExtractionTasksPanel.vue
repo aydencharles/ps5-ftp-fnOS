@@ -4,6 +4,7 @@ import { ChevronDown } from '@lucide/vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import type { DropdownOption, FormInstanceFunctions, FormRules } from 'tdesign-vue-next'
 import { formatBytes, formatETA } from '../api'
+import { notifyError } from '../errorFeedback'
 import { useExtractionTasksStore } from '../stores/extractions'
 import { useLibraryStore } from '../stores/library'
 import type { ExtractionTask } from '../types'
@@ -69,7 +70,7 @@ function historyActions(task: ExtractionTask): DropdownOption[] {
 async function cancel(task: ExtractionTask) {
   const dialog = DialogPlugin.confirm({ header: '取消解压任务？', body: '临时目录会被清理，源分卷不会删除。', confirmBtn: { content: '取消任务', theme: 'danger' }, onConfirm: async () => {
     try { await extractions.cancel(task.id); dialog.destroy(); await MessagePlugin.success('取消请求已提交') }
-    catch (error) { await MessagePlugin.error(error instanceof Error ? error.message : String(error)) }
+    catch (error) { await notifyError(error) }
   } })
 }
 
@@ -78,13 +79,13 @@ async function submitRetry() {
   if (!retryTask.value) return
   if (await retryForm.value?.validate() !== true) return
   try { await extractions.retry(retryTask.value.id, retryPassword.value); retryPassword.value = ''; retryVisible.value = false; await MessagePlugin.success('解压任务已重新加入队列') }
-  catch (error) { await MessagePlugin.error(error instanceof Error ? error.message : String(error)) }
+  catch (error) { await notifyError(error) }
 }
 
 function remove(task: ExtractionTask) {
   const dialog = DialogPlugin.confirm({ header: '删除解压记录？', body: '不会删除压缩包或已经解压的文件。', confirmBtn: { content: '删除记录', theme: 'danger' }, onConfirm: async () => {
     try { await extractions.remove(task.id); dialog.destroy(); await MessagePlugin.success('解压记录已删除') }
-    catch (error) { await MessagePlugin.error(error instanceof Error ? error.message : String(error)) }
+    catch (error) { await notifyError(error) }
   } })
 }
 
@@ -92,7 +93,7 @@ async function openDetail(task: ExtractionTask) {
   detailVisible.value = true
   detailTask.value = task
   try { detailTask.value = (await extractions.detail(task.id)).task }
-  catch (error) { await MessagePlugin.error(error instanceof Error ? error.message : String(error)) }
+  catch (error) { await notifyError(error) }
 }
 </script>
 

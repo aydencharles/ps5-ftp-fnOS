@@ -24,7 +24,7 @@ function extraction(id: string, state = 'queued'): ExtractionTask {
 }
 
 function jsonResponse(data: unknown) {
-  return { ok: true, status: 200, json: async () => data } as Response
+  return { ok: true, status: 200, json: async () => ({ code: 0, message: 'success', data }) } as Response
 }
 
 class FakeEventSource {
@@ -66,7 +66,7 @@ describe('extraction tasks store', () => {
       if (url.endsWith('/retry')) snapshot = [extraction('retried')]
       if (method === 'DELETE') snapshot = []
       if (url === '/api/v1/extraction-tasks' && method === 'GET') return jsonResponse({ tasks: snapshot })
-      return jsonResponse({ ok: true, task: snapshot[0] })
+      return jsonResponse({ task: snapshot[0] })
     }))
     const store = useExtractionTasksStore()
 

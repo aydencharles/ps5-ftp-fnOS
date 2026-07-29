@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -65,13 +66,16 @@ func TestWriteEndpointsReturnStructuredValidationErrors(t *testing.T) {
 				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 			}
 			var response struct {
-				Error  string            `json:"error"`
-				Fields map[string]string `json:"fields"`
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+				Data    struct {
+					Fields map[string]string `json:"fields"`
+				} `json:"data"`
 			}
 			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 				t.Fatal(err)
 			}
-			if response.Error == "" || response.Fields[test.wantField] == "" {
+			if response.Code != codeInvalidRequest || response.Message != messageInvalidRequest || response.Data.Fields[test.wantField] == "" {
 				t.Fatalf("expected field %q in response: %s", test.wantField, recorder.Body.String())
 			}
 		})
@@ -83,7 +87,7 @@ func TestTaskRequestRejectsServerManagedFields(t *testing.T) {
 	body := `{"id":"client-id","type":"upload","profile_id":"00000000000000000000000000000000","sources":[{"root_id":"root","path":"game"}],"destination":"/","conflict_policy":"smart"}`
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/tasks", strings.NewReader(body)))
-	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `unknown field \"id\"`) {
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"code":1000`) {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
@@ -93,6 +97,25 @@ func TestPathIDIsValidatedBeforeHandler(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, "/api/v1/tasks/not-an-id", nil))
 	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"id"`) {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestUnclassifiedErrorsAreInternalRegardlessOfLegacyStatusHint(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway} {
+		recorder := httptest.NewRecorder()
+		fail(recorder, status, errors.New("database is unavailable"))
+		if recorder.Code != http.StatusInternalServerError || !strings.Contains(recorder.Body.String(), `"code":9000`) || strings.Contains(recorder.Body.String(), "database") {
+			t.Fatalf("hint=%d status=%d body=%s", status, recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
+func TestUnknownAPIRouteUsesResourceNotFoundEnvelope(t *testing.T) {
+	handler, _, _ := extractionHandler(t)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/unknown", nil))
+	if recorder.Code != http.StatusBadRequest || recorder.Body.String() != `{"code":1002,"message":"请求的资源不存在","data":null}`+"\n" {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }

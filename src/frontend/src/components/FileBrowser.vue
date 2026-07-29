@@ -24,6 +24,7 @@ import {
   X,
 } from '@lucide/vue'
 import { formatBytes, joinPath, remoteParent } from '../api'
+import { notifyError } from '../errorFeedback'
 import BrowserDeviceBar from './BrowserDeviceBar.vue'
 import PlayStationIcon from './PlayStationIcon.vue'
 import { useLibraryStore } from '../stores/library'
@@ -267,7 +268,7 @@ async function loadBrowser() {
   try {
     return isSource.value ? await library.load() : await files.load()
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
     return false
   }
 }
@@ -419,7 +420,7 @@ async function applyEdit() {
     editVisible.value = false
     await MessagePlugin.success(edit.mode === 'mkdir' ? '文件夹已创建' : '名称已更新')
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { busy.value = false }
 }
 
@@ -431,7 +432,7 @@ async function loadMovePath(path: string) {
     movePath.value = result.path
     moveEntries.value = result.entries.filter((entry) => !selectedEntries.value.some((selected) => selected.is_dir && (entry.path === selected.path || entry.path.startsWith(`${selected.path}/`))))
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { moveLoading.value = false }
 }
 
@@ -453,7 +454,7 @@ async function applyMove() {
     await files.load()
     await MessagePlugin.success('已移动到目标文件夹')
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { busy.value = false }
 }
 
@@ -478,7 +479,7 @@ function askDelete() {
         dialog.destroy()
         await MessagePlugin.success('文件已删除')
       } catch (error) {
-        await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+        await notifyError(error)
       } finally { busy.value = false }
     },
   })
@@ -497,7 +498,7 @@ async function applyDirectoryDelete() {
       await MessagePlugin.warning('递归删除已加入任务中心')
     }
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { busy.value = false }
 }
 

@@ -113,7 +113,7 @@ func (m *Manager) Cancel(ctx context.Context, id string) error {
 	active := m.active[id]
 	m.mu.Unlock()
 	if active == nil {
-		return errors.New("解压任务尚未开始或已不可取消")
+		return fmt.Errorf("%w: 解压任务尚未开始或已不可取消", store.ErrStateConflict)
 	}
 	active.cancel()
 	return nil

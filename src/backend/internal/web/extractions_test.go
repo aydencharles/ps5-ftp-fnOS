@@ -45,20 +45,24 @@ func TestCreateExtractionTaskUsesIndependentAPIAndHidesPassword(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/extraction-tasks", bytes.NewBufferString(body))
 	request.Header.Set("Content-Type", "application/json")
 	handler.ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusCreated {
+	if recorder.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 	if strings.Contains(recorder.Body.String(), "top-secret") || strings.Contains(recorder.Body.String(), "password") {
 		t.Fatalf("response leaked secret: %s", recorder.Body.String())
 	}
 	var response struct {
-		Task domain.ExtractionTask `json:"task"`
+		Code int `json:"code"`
+		Data struct {
+			Task domain.ExtractionTask `json:"task"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if response.Task.Destination.Path != "Game" || !response.Task.DeleteSources || response.Task.State != domain.ExtractionQueued {
-		t.Fatalf("task=%+v", response.Task)
+	task := response.Data.Task
+	if response.Code != codeSuccess || task.Destination.Path != "Game" || !task.DeleteSources || task.State != domain.ExtractionQueued {
+		t.Fatalf("task=%+v", task)
 	}
 	if count, err := s.ExtractionTaskCount(context.Background()); err != nil || count != 1 {
 		t.Fatalf("count=%d err=%v", count, err)
@@ -85,7 +89,26 @@ func TestBootstrapReturnsSeparateExtractionCollection(t *testing.T) {
 	handler, _, _ := extractionHandler(t)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/bootstrap", nil))
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"extraction_tasks":[]`) {
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"data":{"extraction_tasks":[]`) {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestMissingExtractionTaskReturnsResourceNotFound(t *testing.T) {
+	handler, _, _ := extractionHandler(t)
+	id := "00000000000000000000000000000000"
+	requests := []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/api/v1/extraction-tasks/"+id, nil),
+		httptest.NewRequest(http.MethodDelete, "/api/v1/extraction-tasks/"+id, nil),
+		httptest.NewRequest(http.MethodPost, "/api/v1/extraction-tasks/"+id+"/cancel", nil),
+		httptest.NewRequest(http.MethodPost, "/api/v1/extraction-tasks/"+id+"/retry", nil),
+	}
+
+	for _, request := range requests {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"code":1002`) {
+			t.Fatalf("%s %s status=%d body=%s", request.Method, request.URL.Path, recorder.Code, recorder.Body.String())
+		}
 	}
 }

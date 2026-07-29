@@ -29,8 +29,8 @@ describe('tasks store', () => {
   it('deletes a history record and refreshes the authoritative snapshot', async () => {
     const fetch = vi.mocked(globalThis.fetch)
     fetch
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) } as Response)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ tasks: [] }) } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, message: 'success', data: null }) } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, message: 'success', data: { tasks: [] } }) } as Response)
     const store = useTasksStore()
     store.hydrate([{ id: 'history-1', state: 'succeeded' } as never])
 

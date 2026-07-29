@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ArrowUp, Folder, RefreshCw } from '@lucide/vue'
-import { MessagePlugin } from 'tdesign-vue-next'
 import { api, parentPath } from '../api'
+import { notifyError } from '../errorFeedback'
 import { useLibraryStore } from '../stores/library'
 import type { Entry, SourceLocator } from '../types'
 
@@ -29,7 +29,7 @@ async function load(path = currentPath.value) {
     emit('change', { root_id: rootId.value, path: currentPath.value })
   } catch (reason) {
     entries.value = []
-    await MessagePlugin.error(reason instanceof Error ? reason.message : String(reason))
+    await notifyError(reason)
   } finally { loading.value = false }
 }
 

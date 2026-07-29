@@ -6,6 +6,7 @@ import { Pencil, Plus, PlugZap, Trash2 } from '@lucide/vue'
 import ConnectionTestDialog from '../components/ConnectionTestDialog.vue'
 import InterfaceSettings from '../components/InterfaceSettings.vue'
 import PlayStationIcon from '../components/PlayStationIcon.vue'
+import { notifyError } from '../errorFeedback'
 import { useProfilesStore } from '../stores/profiles'
 import { useSystemStore } from '../stores/system'
 import type { Profile } from '../types'
@@ -59,7 +60,7 @@ function presetChanged(value: string) { if (value === 'zftpd') form.port = 2120;
 async function save() {
   if (await profileForm.value?.validate() !== true) return
   try { await profiles.save(form); visible.value = false; await MessagePlugin.success('PS5 配置已保存') }
-  catch (error) { await MessagePlugin.error(error instanceof Error ? error.message : String(error)) }
+  catch (error) { await notifyError(error) }
 }
 async function remove(profile: Profile) {
   const dialog = DialogPlugin.confirm({ header:'删除 PS5 配置？', body:`将删除 ${profile.name} 及其任务记录。`, onConfirm:async()=>{ await profiles.remove(profile.id); dialog.destroy() } })

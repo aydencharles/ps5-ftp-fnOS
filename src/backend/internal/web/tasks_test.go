@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/domain"
@@ -33,7 +34,7 @@ func TestDeleteTaskEndpointOnlyDeletesHistory(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, "/api/v1/tasks/"+task.ID, nil))
-	if recorder.Code != http.StatusConflict {
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"code":1003`) {
 		t.Fatalf("queued delete status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 
@@ -47,6 +48,25 @@ func TestDeleteTaskEndpointOnlyDeletesHistory(t *testing.T) {
 	}
 	if _, err := s.Task(ctx, task.ID); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("task record still exists: %v", err)
+	}
+}
+
+func TestMissingTaskReturnsResourceNotFound(t *testing.T) {
+	handler, _, _ := extractionHandler(t)
+	id := "00000000000000000000000000000000"
+	requests := []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/api/v1/tasks/"+id, nil),
+		httptest.NewRequest(http.MethodDelete, "/api/v1/tasks/"+id, nil),
+		httptest.NewRequest(http.MethodPost, "/api/v1/tasks/"+id+"/cancel", nil),
+		httptest.NewRequest(http.MethodPost, "/api/v1/tasks/"+id+"/retry", nil),
+	}
+
+	for _, request := range requests {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"code":1002`) {
+			t.Fatalf("%s %s status=%d body=%s", request.Method, request.URL.Path, recorder.Code, recorder.Body.String())
+		}
 	}
 }
 
@@ -72,16 +92,20 @@ func TestCreateDownloadTaskUsesLibraryLocatorAsDestination(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/tasks", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	handler.ServeHTTP(recorder, req)
-	if recorder.Code != http.StatusCreated {
+	if recorder.Code != http.StatusOK {
 		t.Fatalf("create status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 	var response struct {
-		Task domain.Task `json:"task"`
+		Code int `json:"code"`
+		Data struct {
+			Task domain.Task `json:"task"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if response.Task.Type != "download" || response.Task.Destination != "downloads/new-library" || len(response.Task.Sources) != 1 || response.Task.Sources[0].RootID != "root" || response.Task.Sources[0].Path != "/data/game.exfat" {
-		t.Fatalf("task=%+v", response.Task)
+	task := response.Data.Task
+	if response.Code != codeSuccess || task.Type != "download" || task.Destination != "downloads/new-library" || len(task.Sources) != 1 || task.Sources[0].RootID != "root" || task.Sources[0].Path != "/data/game.exfat" {
+		t.Fatalf("task=%+v", task)
 	}
 }

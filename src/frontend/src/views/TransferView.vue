@@ -4,6 +4,7 @@ import { ArrowRight } from '@lucide/vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import type { FormInstanceFunctions, FormRules } from 'tdesign-vue-next'
 import { formatBytes, parentPath } from '../api'
+import { notifyError } from '../errorFeedback'
 import BrowserDeviceBar from '../components/BrowserDeviceBar.vue'
 import FileBrowser from '../components/FileBrowser.vue'
 import LocalDirectoryPicker from '../components/LocalDirectoryPicker.vue'
@@ -77,7 +78,7 @@ async function submit() {
     confirmVisible.value = false
     await MessagePlugin.success(`任务 ${task.id.slice(0, 8)} 已加入队列`)
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { submitting.value = false }
 }
 
@@ -105,7 +106,7 @@ async function submitExtraction() {
     extractVisible.value = false
     await MessagePlugin.success(`解压任务 ${task.id.slice(0, 8)} 已加入队列`)
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { extractSubmitting.value = false }
 }
 </script>

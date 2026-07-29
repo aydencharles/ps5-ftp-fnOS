@@ -74,7 +74,7 @@ func (s *Server) listExtractionTasks(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true, "tasks": tasks})
+	successResponse(w, map[string]any{"tasks": tasks})
 }
 
 func (s *Server) createExtractionTask(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +98,7 @@ func (s *Server) createExtractionTask(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	jsonResponse(w, http.StatusCreated, map[string]any{"ok": true, "task": saved})
+	successResponse(w, map[string]any{"task": saved})
 }
 
 func (s *Server) getExtractionTask(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +107,7 @@ func (s *Server) getExtractionTask(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true, "task": task})
+	successResponse(w, map[string]any{"task": task})
 }
 
 func (s *Server) deleteExtractionTask(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +115,7 @@ func (s *Server) deleteExtractionTask(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true})
+	successResponse(w, nil)
 }
 
 func (s *Server) cancelExtractionTask(w http.ResponseWriter, r *http.Request) {
@@ -127,7 +127,7 @@ func (s *Server) cancelExtractionTask(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true})
+	successResponse(w, nil)
 }
 
 func (s *Server) retryExtractionTask(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +137,7 @@ func (s *Server) retryExtractionTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !domain.ExtractionTerminal(old.State) {
-		fail(w, 409, errors.New("活动中的解压任务不能重试"))
+		fail(w, 409, resourceConflictError(errors.New("活动中的解压任务不能重试")))
 		return
 	}
 	var request extractionRetryRequest
@@ -166,7 +166,7 @@ func (s *Server) retryExtractionTask(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	jsonResponse(w, http.StatusCreated, map[string]any{"ok": true, "task": saved})
+	successResponse(w, map[string]any{"task": saved})
 }
 
 func (s *Server) extractionEvents(w http.ResponseWriter, r *http.Request) {

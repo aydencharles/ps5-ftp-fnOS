@@ -7,6 +7,7 @@ import { MessagePlugin } from 'tdesign-vue-next'
 import FileBrowser from './FileBrowser.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
+import { usePS5FilesStore } from '../stores/ps5Files'
 import type { SourceLocator } from '../types'
 
 vi.mock('tdesign-vue-next', () => ({
@@ -48,7 +49,7 @@ const stubs = {
 }
 
 function jsonResponse(data: unknown) {
-  return { ok: true, status: 200, json: async () => data } as Response
+  return { ok: true, status: 200, json: async () => ({ code: 0, message: 'success', data }) } as Response
 }
 
 describe('File Browser', () => {
@@ -157,8 +158,8 @@ describe('File Browser', () => {
   it('shows PS5 connection failures as a global message instead of page content', async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: false,
-      status: 502,
-      json: async () => ({ error: '无法连接到 PS5' }),
+      status: 400,
+      json: async () => ({ code: 2001, message: '无法连接到 PS5', data: null }),
     } as Response)
 
     const wrapper = mountDestination()
@@ -166,6 +167,19 @@ describe('File Browser', () => {
 
     expect(MessagePlugin.error).toHaveBeenCalledWith('无法连接到 PS5')
     expect(wrapper.text()).not.toContain('无法连接到 PS5')
+  })
+
+  it('clears the remote browser without requesting an empty or deleted profile id', async () => {
+    const wrapper = mountDestination()
+    await flushPromises()
+    requests.length = 0
+
+    useProfilesStore().hydrate([])
+    await flushPromises()
+
+    expect(requests).toEqual([])
+    expect(usePS5FilesStore().profileId).toBe('')
+    expect(wrapper.findAll('tbody tr[data-entry-path]')).toHaveLength(0)
   })
 
   it('uses the directory currently being browsed as the destination', async () => {

@@ -45,6 +45,28 @@ func TestProfilePasswordEncryptedAndHidden(t *testing.T) {
 	}
 }
 
+func TestDeletedProfileCannotBeReadDeletedAgainOrUpdated(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	profile, err := s.SaveProfile(ctx, domain.Profile{Name: "PS5", Host: "127.0.0.1", Port: 2121, BasePath: "/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.DeleteProfile(ctx, profile.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Profile(ctx, profile.ID, false); !errors.Is(err, ErrProfileNotFound) {
+		t.Fatalf("read error=%v", err)
+	}
+	if err = s.DeleteProfile(ctx, profile.ID); !errors.Is(err, ErrProfileNotFound) {
+		t.Fatalf("second delete error=%v", err)
+	}
+	profile.Name = "Updated"
+	if _, err = s.SaveProfile(ctx, profile); !errors.Is(err, ErrProfileNotFound) {
+		t.Fatalf("update error=%v", err)
+	}
+}
+
 func TestInterruptInFlightKeepsQueued(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

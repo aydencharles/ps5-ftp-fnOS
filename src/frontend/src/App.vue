@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Settings } from '@lucide/vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import FnOSIcon from './components/FnOSIcon.vue'
@@ -12,8 +12,11 @@ import { useLibraryStore } from './stores/library'
 import { useTasksStore } from './stores/tasks'
 import { useExtractionTasksStore } from './stores/extractions'
 import { parentPath } from './api'
+import { notifyError } from './errorFeedback'
+import { enforceProfileRoute } from './profileRecovery'
 
 const route = useRoute()
+const router = useRouter()
 const system = useSystemStore()
 const profiles = useProfilesStore()
 const library = useLibraryStore()
@@ -21,7 +24,7 @@ const tasks = useTasksStore()
 const extractions = useExtractionTasksStore()
 
 async function showError(error: unknown) {
-  await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+  await notifyError(error)
 }
 
 watch(() => extractions.items, (current, previous) => {
@@ -53,6 +56,7 @@ onMounted(async () => {
     library.hydrate(data.library_roots)
     tasks.hydrate(data.tasks)
     extractions.hydrate(data.extraction_tasks)
+    await enforceProfileRoute(profiles, router)
     tasks.connect()
     extractions.connect()
   } catch (error) {

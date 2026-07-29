@@ -6,6 +6,7 @@ import { ChevronDown } from '@lucide/vue'
 import { useRoute, useRouter } from 'vue-router'
 import ExtractionTasksPanel from '../components/ExtractionTasksPanel.vue'
 import { formatBytes, formatETA } from '../api'
+import { notifyError } from '../errorFeedback'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
 import { useTasksStore } from '../stores/tasks'
@@ -106,7 +107,7 @@ async function cancel(id: string) {
     confirmBtn: { content: '取消任务', theme: 'danger' },
     onConfirm: async () => {
       try { await tasks.cancel(id); dialog.destroy(); await MessagePlugin.success('取消请求已提交') }
-      catch (error) { await MessagePlugin.error(error instanceof Error ? error.message : String(error)) }
+      catch (error) { await notifyError(error) }
     },
   })
 }
@@ -116,7 +117,7 @@ async function retry(task: Task) {
     await tasks.retry(task.id)
     await MessagePlugin.success('新任务已加入队列，将重新扫描来源')
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   }
 }
 
@@ -132,7 +133,7 @@ function removeHistory(task: Task) {
         dialog.destroy()
         await MessagePlugin.success('任务记录已删除')
       } catch (error) {
-        await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+        await notifyError(error)
       }
     },
   })
@@ -150,7 +151,7 @@ async function openDetail(task: Task) {
     detailItems.value = data.items || []
     detailEvents.value = data.events || []
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { detailLoading.value = false }
 }
 </script>

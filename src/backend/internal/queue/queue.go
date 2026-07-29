@@ -112,7 +112,7 @@ func (m *Manager) Cancel(ctx context.Context, id string) error {
 	e := m.active[id]
 	m.mu.Unlock()
 	if e == nil {
-		return errors.New("task is not running")
+		return fmt.Errorf("%w: task is not running", store.ErrStateConflict)
 	}
 	e.stop()
 	return nil

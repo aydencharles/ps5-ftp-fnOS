@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"fmt"
 
 	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/domain"
 )
@@ -173,7 +173,11 @@ func (s *Store) MarkExtractionCanceling(ctx context.Context, id string) error {
 	}
 	count, _ := result.RowsAffected()
 	if count == 0 {
-		return errors.New("extraction task cannot be canceled")
+		var state string
+		if err = s.db.QueryRowContext(ctx, "SELECT state FROM extraction_tasks WHERE id=?", id).Scan(&state); err != nil {
+			return err
+		}
+		return fmt.Errorf("%w: extraction task in state %s cannot be canceled", ErrStateConflict, state)
 	}
 	return nil
 }
@@ -188,9 +192,16 @@ func (s *Store) DeleteExtractionTask(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	count, _ := result.RowsAffected()
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
 	if count == 0 {
-		return errors.New("only extraction history can be deleted")
+		var state string
+		if err = s.db.QueryRowContext(ctx, "SELECT state FROM extraction_tasks WHERE id=?", id).Scan(&state); err != nil {
+			return err
+		}
+		return fmt.Errorf("%w: extraction task in state %s is not a history record", ErrStateConflict, state)
 	}
 	return nil
 }

@@ -4,6 +4,7 @@ import { Ban, CircleCheck, Clock3, Eye, History, Info, ListTodo, RotateCcw, Tras
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import type { FormInstanceFunctions, FormRules } from 'tdesign-vue-next'
 import { formatBytes, formatETA } from '../api'
+import { notifyError } from '../errorFeedback'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
 import { useTasksStore } from '../stores/tasks'
@@ -293,7 +294,7 @@ async function cancel(task: Task) {
         dialog.destroy()
         await MessagePlugin.success('取消请求已提交')
       } catch (error) {
-        await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+        await notifyError(error)
       }
     },
   })
@@ -305,7 +306,7 @@ async function retry(task: Task) {
     taskCenter.statusTab = 'active'
     await MessagePlugin.success('新任务已加入队列，将重新扫描来源')
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   }
 }
 
@@ -316,7 +317,7 @@ async function cancelExtraction(task: ExtractionTask) {
     confirmBtn: { content: '取消任务', theme: 'danger' },
     onConfirm: async () => {
       try { await extractions.cancel(task.id); dialog.destroy(); await MessagePlugin.success('取消请求已提交') }
-      catch (error) { await MessagePlugin.error(error instanceof Error ? error.message : String(error)) }
+      catch (error) { await notifyError(error) }
     },
   })
 }
@@ -335,7 +336,7 @@ async function submitExtractionRetry() {
     retryPassword.value = ''
     retryVisible.value = false
     await MessagePlugin.success('解压任务已重新加入队列')
-  } catch (error) { await MessagePlugin.error(error instanceof Error ? error.message : String(error)) }
+  } catch (error) { await notifyError(error) }
 }
 
 function removeExtraction(task: ExtractionTask) {
@@ -345,7 +346,7 @@ function removeExtraction(task: ExtractionTask) {
     confirmBtn: { content: '删除记录', theme: 'danger' },
     onConfirm: async () => {
       try { await extractions.remove(task.id); dialog.destroy(); await MessagePlugin.success('解压记录已删除') }
-      catch (error) { await MessagePlugin.error(error instanceof Error ? error.message : String(error)) }
+      catch (error) { await notifyError(error) }
     },
   })
 }
@@ -354,7 +355,7 @@ async function openExtractionDetail(task: ExtractionTask) {
   extractionDetailVisible.value = true
   extractionDetail.value = task
   try { extractionDetail.value = (await extractions.detail(task.id)).task }
-  catch (error) { await MessagePlugin.error(error instanceof Error ? error.message : String(error)) }
+  catch (error) { await notifyError(error) }
 }
 
 function removeHistory(task: Task) {
@@ -369,7 +370,7 @@ function removeHistory(task: Task) {
         dialog.destroy()
         await MessagePlugin.success('任务记录已删除')
       } catch (error) {
-        await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+        await notifyError(error)
       }
     },
   })
@@ -387,7 +388,7 @@ async function openDetail(task: Task) {
     detailItems.value = data.items || []
     detailEvents.value = data.events || []
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally {
     detailLoading.value = false
   }
