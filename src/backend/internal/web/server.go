@@ -102,7 +102,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tasks, _ := s.store.Tasks(r.Context())
-	jsonResponse(w, 200, map[string]any{"ok": true, "name": "PS5 FTP Manager", "version": "0.1.0", "profiles": profiles, "library_roots": s.library.Roots(), "tasks": tasks, "settings": map[string]any{"transfer_workers": s.store.Workers(r.Context())}})
+	jsonResponse(w, 200, map[string]any{"ok": true, "name": "PS5 FTP Manager", "version": "0.2.0", "profiles": profiles, "library_roots": s.library.Roots(), "tasks": tasks, "settings": map[string]any{"transfer_workers": s.store.Workers(r.Context())}})
 }
 func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 	v, err := s.store.Profiles(r.Context())
