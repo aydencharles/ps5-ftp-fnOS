@@ -135,7 +135,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	successResponse(w, map[string]any{"name": "PS5 FTP Manager", "version": "0.2.0", "profiles": profiles, "library_roots": s.library.Roots(), "tasks": tasks, "extraction_tasks": extractions, "settings": map[string]any{"transfer_workers": s.store.Workers(r.Context())}})
+	successResponse(w, map[string]any{"name": "PS5 FTP Manager", "version": "0.3.0", "profiles": profiles, "library_roots": s.library.Roots(), "tasks": tasks, "extraction_tasks": extractions, "settings": map[string]any{"transfer_workers": s.store.Workers(r.Context())}})
 }
 func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 	v, err := s.store.Profiles(r.Context())
