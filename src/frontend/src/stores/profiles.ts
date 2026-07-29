@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
-import type { Profile } from '../types'
+import type { ConnectionTestResult, Profile } from '../types'
 
 export const useProfilesStore = defineStore('profiles', {
   state: () => ({ items: [] as Profile[], selectedId: '' }),
@@ -13,6 +13,6 @@ export const useProfilesStore = defineStore('profiles', {
       await api(`/api/v1/profiles${suffix}`, { method, body: JSON.stringify(profile) }); await this.refresh()
     },
     async remove(id: string) { await api(`/api/v1/profiles/${id}`, { method: 'DELETE' }); await this.refresh() },
-    async test(id: string) { return api<{ ok: boolean; error?: string }>(`/api/v1/profiles/${id}/test`, { method: 'POST' }) },
+    async test(id: string, signal?: AbortSignal) { return api<ConnectionTestResult>(`/api/v1/profiles/${id}/test`, { method: 'POST', signal }) },
   },
 })

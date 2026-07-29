@@ -166,15 +166,7 @@ func (s *Server) testProfile(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-	c, err := ftpclient.Dial(ctx, p)
-	if err != nil {
-		fail(w, 502, err)
-		return
-	}
-	defer c.Close()
-	jsonResponse(w, 200, c.Test())
+	jsonResponse(w, 200, ftpclient.Probe(r.Context(), p))
 }
 
 func (s *Server) roots(w http.ResponseWriter, r *http.Request) {

@@ -9,6 +9,29 @@ export interface Profile {
   preset: 'zftpd' | 'ftpsrv' | 'custom'
 }
 
+export type ConnectionCheckStatus = 'pending' | 'passed' | 'failed' | 'skipped'
+export interface ConnectionCheck {
+  id: 'resolve' | 'connect' | 'authenticate' | 'directory'
+  status: ConnectionCheckStatus
+  detail?: string
+  duration_ms: number
+}
+export interface ConnectionFailure {
+  stage: ConnectionCheck['id']
+  code: string
+  title: string
+  message: string
+  detail?: string
+  suggestions: string[]
+}
+export interface ConnectionTestResult {
+  ok: boolean
+  checks: ConnectionCheck[]
+  failure?: ConnectionFailure
+  duration_ms: number
+  tested_at: string
+}
+
 export interface LibraryRoot { id: string; label: string; favorite: boolean; kind: 'volume' | 'share' | string }
 export interface Entry {
   name: string

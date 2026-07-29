@@ -290,6 +290,50 @@ button, input { font: inherit; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
 .span-two { grid-column: 1 / -1; }
 
+.connection-test-dialog .t-dialog__body { max-height: calc(100vh - 190px); overflow-y: auto; }
+@supports (height: 100dvh) {
+  .connection-test-dialog .t-dialog__body { max-height: calc(100dvh - 190px); }
+}
+.connection-target { min-height: 56px; padding: 9px 12px; display: flex; align-items: center; gap: 11px; background: @surface-subtle; border: 1px solid @border; }
+.connection-target-icon { width: 32px; height: 32px; display: grid; place-items: center; flex: 0 0 auto; color: @text-secondary; background: @surface; border: 1px solid @border; border-radius: 3px; }
+.connection-target strong, .connection-target small { display: block; }
+.connection-target strong { font-size: 13px; font-weight: 600; }
+.connection-target small { margin-top: 2px; color: @text-tertiary; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.connection-testing-state { min-height: 190px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: @text-secondary; text-align: center; }
+.connection-testing-state svg { color: @primary; }
+.connection-testing-state strong { margin-top: 12px; color: @text; font-size: 14px; font-weight: 600; }
+.connection-testing-state span { max-width: 390px; margin-top: 4px; color: @text-tertiary; font-size: 12px; }
+.spin { animation: connection-spin .9s linear infinite; }
+@keyframes connection-spin { to { transform: rotate(360deg); } }
+.connection-result { min-height: 64px; margin-top: 14px; padding: 11px 13px; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 1px solid; }
+.connection-result.is-success { color: @success; background: #f4faf6; border-color: #cfe4d6; }
+.connection-result.is-failed { color: @danger; background: #fdf6f6; border-color: #ebcfd2; }
+.connection-result strong, .connection-result span { display: block; }
+.connection-result strong { color: @text; font-size: 13px; font-weight: 650; }
+.connection-result span { margin-top: 2px; color: @text-secondary; font-size: 11px; }
+.connection-result small { color: currentColor; font-size: 11px; font-weight: 600; }
+.connection-checks { margin: 14px 0 0; padding: 0; list-style: none; border-top: 1px solid @border-light; }
+.connection-checks li { min-height: 54px; padding: 8px 4px; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid @border-light; }
+.connection-checks li > svg { color: @text-tertiary; }
+.connection-checks li.is-passed > svg { color: @success; }
+.connection-checks li.is-failed > svg { color: @danger; }
+.connection-checks strong, .connection-checks span { display: block; }
+.connection-checks strong { font-size: 12px; font-weight: 600; }
+.connection-checks span { margin-top: 2px; color: @text-tertiary; font-size: 11px; }
+.connection-checks small { color: @text-tertiary; font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.connection-checks li.is-skipped strong, .connection-checks li.is-skipped span { color: @text-tertiary; }
+.connection-failure { margin-top: 14px; padding: 13px 14px; background: #fcfaf5; border-left: 3px solid #d59b32; }
+.connection-failure header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.connection-failure header strong { font-size: 13px; font-weight: 650; }
+.failure-code { color: @text-tertiary; font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.connection-failure p { margin: 5px 0 0; color: @text-secondary; font-size: 12px; }
+.connection-failure h4 { margin: 12px 0 5px; font-size: 11px; font-weight: 600; }
+.connection-failure ul { margin: 0; padding-left: 18px; color: @text-secondary; font-size: 11px; }
+.connection-failure li + li { margin-top: 3px; }
+.connection-failure details { margin-top: 11px; padding-top: 9px; border-top: 1px solid fade(@border, 75%); }
+.connection-failure summary { color: @text-tertiary; font-size: 11px; cursor: pointer; }
+.connection-failure code { margin-top: 7px; padding: 7px 8px; display: block; overflow-wrap: anywhere; color: @text-secondary; background: fade(@surface, 65%); border: 1px solid @border-light; font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+
 // Keep TDesign visually quiet and consistent with the workbench.
 .t-card, .t-dialog { box-shadow: none !important; }
 .t-button { border-radius: 3px; font-weight: 500; }
