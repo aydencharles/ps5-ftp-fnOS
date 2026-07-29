@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FileBrowser from './FileBrowser.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
+import type { SourceLocator } from '../types'
 
 vi.mock('tdesign-vue-next', () => ({
   DialogPlugin: { confirm: vi.fn(() => ({ destroy: vi.fn() })) },
@@ -28,7 +29,11 @@ const TDialog = defineComponent({
   template: '<section v-if="visible" class="test-dialog"><h2>{{ header }}</h2><slot /><button class="dialog-confirm" @click="$emit(\'confirm\')">确认</button></section>',
 })
 const passThrough = defineComponent({ template: '<div><slot /></div>' })
-const TCheckbox = defineComponent({ props: { checked: Boolean }, emits: ['click', 'change'], template: '<input type="checkbox" :checked="checked" @click="$emit(\'click\', $event); $emit(\'change\', !checked)" />' })
+const TCheckbox = defineComponent({
+  props: { checked: Boolean, indeterminate: Boolean },
+  emits: ['click', 'change'],
+  template: '<input type="checkbox" :checked="checked" :data-indeterminate="indeterminate" @click="$emit(\'click\', $event); $emit(\'change\', !checked)" />',
+})
 
 const stubs = {
   TButton,
@@ -73,6 +78,7 @@ describe('File Browser', () => {
         entries: path === '/' ? [
           { name: 'PS5 游戏', path: '1000/PS5 游戏', is_dir: true, size: 0, game_kind: 'game-directory' },
           { name: 'backup.exfat', path: '1000/backup.exfat', is_dir: false, size: 4096, game_kind: 'game-image' },
+          { name: 'readme.txt', path: '1000/readme.txt', is_dir: false, size: 128 },
         ] : [{ name: 'eboot.bin', path: '1000/PS5 游戏/eboot.bin', is_dir: false, size: 1024 }],
       })
       return jsonResponse({
@@ -95,6 +101,20 @@ describe('File Browser', () => {
       props: { mode: 'destination', modelValue: '/data/homebrew', compact: true },
       global: { stubs, mocks: { $router: { push: vi.fn() } } },
     })
+  }
+
+  function mountSource(selectedSources: SourceLocator[] = []) {
+    const library = useLibraryStore()
+    library.hydrate([{ id: 'vol2', label: '存储空间 2', favorite: false, kind: 'volume' }])
+    return mount(FileBrowser, {
+      props: { mode: 'source', compact: true, selectedSources },
+      global: { stubs, mocks: { $router: { push: vi.fn() } } },
+    })
+  }
+
+  function latestSources(wrapper: ReturnType<typeof mount>): SourceLocator[] {
+    const updates = wrapper.emitted('update:selectedSources')
+    return (updates?.at(-1)?.[0] || []) as SourceLocator[]
   }
 
   it('renders path segments with one separator and only lists directories', async () => {
@@ -129,22 +149,34 @@ describe('File Browser', () => {
   })
 
   it('uses the same browser for fnOS sources while hiding the numeric UID path', async () => {
-    const library = useLibraryStore()
-    library.hydrate([{ id: 'vol2', label: '存储空间 2', favorite: false, kind: 'volume' }])
-    const wrapper = mount(FileBrowser, {
-      props: { mode: 'source', compact: true },
-      global: { stubs, mocks: { $router: { push: vi.fn() } } },
-    })
+    const wrapper = mountSource()
     await flushPromises()
 
-    expect(wrapper.findAll('tbody tr[data-entry-path]')).toHaveLength(2)
+    expect(wrapper.findAll('tbody tr[data-entry-path]')).toHaveLength(3)
     await wrapper.get('tr[data-entry-path="1000/PS5 游戏"] .check-column input').trigger('click')
-    expect(library.selected).toEqual([{ root_id: 'vol2', path: '1000/PS5 游戏' }])
+    expect(latestSources(wrapper)).toEqual([{ root_id: 'vol2', path: '1000/PS5 游戏' }])
 
     await wrapper.get('tr[data-entry-path="1000/PS5 游戏"]').trigger('dblclick')
     await flushPromises()
     expect(wrapper.get('[data-testid="ps5-breadcrumb"]').text()).toBe('存储空间 2/PS5 游戏')
     expect(wrapper.get('[data-testid="ps5-breadcrumb"]').text()).not.toContain('1000')
+  })
+
+  it('selects a child on the first click after opening a selected directory', async () => {
+    const wrapper = mountSource()
+    await flushPromises()
+
+    const directory = wrapper.get('tr[data-entry-path="1000/PS5 游戏"]')
+    await directory.trigger('click')
+    expect(latestSources(wrapper)).toEqual([{ root_id: 'vol2', path: '1000/PS5 游戏' }])
+
+    await directory.trigger('dblclick')
+    await flushPromises()
+    expect(latestSources(wrapper)).toEqual([])
+    await wrapper.get('tr[data-entry-path="1000/PS5 游戏/eboot.bin"]').trigger('click')
+
+    expect(latestSources(wrapper)).toEqual([{ root_id: 'vol2', path: '1000/PS5 游戏/eboot.bin' }])
+    expect(wrapper.get('tr[data-entry-path="1000/PS5 游戏/eboot.bin"]').classes()).toContain('is-selected')
   })
 
   it('loads and selects correctly when bootstrap supplies the first Library Root after mounting', async () => {
@@ -159,9 +191,118 @@ describe('File Browser', () => {
     library.hydrate([{ id: 'vol2', label: '存储空间 2', favorite: false, kind: 'volume' }])
     await flushPromises()
 
-    expect(wrapper.findAll('tbody tr[data-entry-path]')).toHaveLength(2)
+    expect(wrapper.findAll('tbody tr[data-entry-path]')).toHaveLength(3)
     await wrapper.get('tr[data-entry-path="1000/PS5 游戏"] .check-column input').trigger('click')
     await flushPromises()
-    expect(library.selected).toEqual([{ root_id: 'vol2', path: '1000/PS5 游戏' }])
+    expect(latestSources(wrapper)).toEqual([{ root_id: 'vol2', path: '1000/PS5 游戏' }])
+  })
+
+  it('implements desktop plain-click, Ctrl/Command, and Shift selection semantics', async () => {
+    const wrapper = mountSource()
+    await flushPromises()
+    const directory = wrapper.get('tr[data-entry-path="1000/PS5 游戏"]')
+    const image = wrapper.get('tr[data-entry-path="1000/backup.exfat"]')
+    const readme = wrapper.get('tr[data-entry-path="1000/readme.txt"]')
+
+    await directory.trigger('click')
+    await image.trigger('click', { ctrlKey: true })
+    expect(latestSources(wrapper)).toEqual([
+      { root_id: 'vol2', path: '1000/PS5 游戏' },
+      { root_id: 'vol2', path: '1000/backup.exfat' },
+    ])
+
+    await readme.trigger('click')
+    expect(latestSources(wrapper)).toEqual([{ root_id: 'vol2', path: '1000/readme.txt' }])
+
+    await directory.trigger('click')
+    await readme.trigger('click', { shiftKey: true })
+    expect(latestSources(wrapper)).toEqual([
+      { root_id: 'vol2', path: '1000/PS5 游戏' },
+      { root_id: 'vol2', path: '1000/backup.exfat' },
+      { root_id: 'vol2', path: '1000/readme.txt' },
+    ])
+
+    await image.trigger('click', { metaKey: true })
+    expect(latestSources(wrapper)).toEqual([
+      { root_id: 'vol2', path: '1000/PS5 游戏' },
+      { root_id: 'vol2', path: '1000/readme.txt' },
+    ])
+  })
+
+  it('uses item checkboxes as additive toggles and exposes partial/all header state', async () => {
+    const wrapper = mountSource()
+    await flushPromises()
+    const directory = wrapper.get('tr[data-entry-path="1000/PS5 游戏"]')
+    const imageCheckbox = wrapper.get('tr[data-entry-path="1000/backup.exfat"] .check-column input')
+    const headerCheckbox = wrapper.get('thead .check-column input')
+
+    await directory.trigger('click')
+    await imageCheckbox.trigger('click')
+    expect(latestSources(wrapper)).toEqual([
+      { root_id: 'vol2', path: '1000/PS5 游戏' },
+      { root_id: 'vol2', path: '1000/backup.exfat' },
+    ])
+    expect(headerCheckbox.attributes('data-indeterminate')).toBe('true')
+
+    await headerCheckbox.trigger('click')
+    expect(latestSources(wrapper)).toHaveLength(3)
+    expect(headerCheckbox.attributes('data-indeterminate')).toBe('false')
+
+    await headerCheckbox.trigger('click')
+    expect(latestSources(wrapper)).toEqual([])
+  })
+
+  it('preserves selected rows on right-click and replaces selection for an unselected row', async () => {
+    const wrapper = mountSource()
+    await flushPromises()
+    const directory = wrapper.get('tr[data-entry-path="1000/PS5 游戏"]')
+    const image = wrapper.get('tr[data-entry-path="1000/backup.exfat"]')
+    const readme = wrapper.get('tr[data-entry-path="1000/readme.txt"]')
+
+    await directory.trigger('click')
+    await image.trigger('click', { ctrlKey: true })
+    await image.trigger('contextmenu', { clientX: 40, clientY: 40 })
+    await flushPromises()
+    expect(latestSources(wrapper)).toEqual([
+      { root_id: 'vol2', path: '1000/PS5 游戏' },
+      { root_id: 'vol2', path: '1000/backup.exfat' },
+    ])
+
+    await readme.trigger('contextmenu', { clientX: 60, clientY: 60 })
+    await flushPromises()
+    expect(latestSources(wrapper)).toEqual([{ root_id: 'vol2', path: '1000/readme.txt' }])
+    expect(document.body.querySelector('[role="menu"]')).not.toBeNull()
+  })
+
+  it('keeps file opening separate from selection and clears selection on blank space', async () => {
+    const wrapper = mountSource()
+    await flushPromises()
+    const directory = wrapper.get('tr[data-entry-path="1000/PS5 游戏"]')
+    const image = wrapper.get('tr[data-entry-path="1000/backup.exfat"]')
+
+    await directory.trigger('click')
+    const updateCount = wrapper.emitted('update:selectedSources')?.length
+    await image.trigger('dblclick')
+    await flushPromises()
+    expect(wrapper.emitted('update:selectedSources')?.length).toBe(updateCount)
+    expect(wrapper.text()).toContain('backup.exfat')
+
+    await wrapper.get('.station-table-wrap').trigger('click')
+    expect(latestSources(wrapper)).toEqual([])
+  })
+
+  it('selects a picker target on one click and navigates only on double click', async () => {
+    const wrapper = mountDestination()
+    await flushPromises()
+    const games = wrapper.get('tr[data-entry-path="/data/homebrew/Games"]')
+
+    await games.trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['/data/homebrew/Games'])
+    expect(wrapper.get('[data-testid="ps5-breadcrumb"]').text()).toBe('客厅 PS5/data/homebrew')
+    expect(games.classes()).toContain('is-target')
+
+    await games.trigger('dblclick')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="ps5-breadcrumb"]').text()).toBe('客厅 PS5/data/homebrew/Games')
   })
 })

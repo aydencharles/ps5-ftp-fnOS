@@ -102,7 +102,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tasks, _ := s.store.Tasks(r.Context())
-	jsonResponse(w, 200, map[string]any{"ok": true, "name": "PS5 FTP Manager", "version": "0.1.0", "profiles": profiles, "library_roots": s.library.Roots(), "tasks": tasks, "settings": map[string]any{"transfer_workers": s.store.Workers(r.Context())}})
+	jsonResponse(w, 200, map[string]any{"ok": true, "name": "PS5 FTP Manager", "version": "0.2.0", "profiles": profiles, "library_roots": s.library.Roots(), "tasks": tasks, "settings": map[string]any{"transfer_workers": s.store.Workers(r.Context())}})
 }
 func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 	v, err := s.store.Profiles(r.Context())
@@ -166,15 +166,7 @@ func (s *Server) testProfile(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-	c, err := ftpclient.Dial(ctx, p)
-	if err != nil {
-		fail(w, 502, err)
-		return
-	}
-	defer c.Close()
-	jsonResponse(w, 200, c.Test())
+	jsonResponse(w, 200, ftpclient.Probe(r.Context(), p))
 }
 
 func (s *Server) roots(w http.ResponseWriter, r *http.Request) {

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { HardDrive } from '@lucide/vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import FileBrowser from '../components/FileBrowser.vue'
+import FnOSIcon from '../components/FnOSIcon.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
 import { useTasksStore } from '../stores/tasks'
@@ -61,7 +61,7 @@ async function copyToFnOS() {
         <t-select v-model="library.rootId" :options="library.storageRoots.map(root => ({ label: root.label, value: root.id }))" placeholder="选择存储空间" class="location-select" />
       </header>
       <FileBrowser mode="source" :picker="true" compact @choose-local-path="chooseLocalDestination" />
-      <div class="local-destination-summary"><HardDrive :size="15" /><span>复制到</span><strong>{{ localDestinationLabel }}</strong></div>
+      <div class="local-destination-summary"><FnOSIcon :size="15" /><span>复制到</span><strong>{{ localDestinationLabel }}</strong></div>
       <div class="download-conflict-policy">
         <strong>同名文件处理</strong>
         <t-radio-group v-model="conflict">

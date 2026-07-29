@@ -5,5 +5,11 @@ import 'tdesign-vue-next/es/style/index.css'
 import './styles/app.less'
 import App from './App.vue'
 import router from './router'
+import { useUiPreferencesStore } from './stores/uiPreferences'
 
-createApp(App).use(createPinia()).use(router).use(TDesign).mount('#app')
+const app = createApp(App)
+const pinia = createPinia()
+
+app.use(pinia).use(router).use(TDesign)
+useUiPreferencesStore(pinia).hydrate()
+app.mount('#app')

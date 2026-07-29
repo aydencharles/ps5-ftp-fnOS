@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { FolderOpen, ListTodo, Send, Settings } from '@lucide/vue'
+import { Settings } from '@lucide/vue'
 import logoUrl from '../../../assets/logo.png'
+import FnOSIcon from './components/FnOSIcon.vue'
+import PlayStationIcon from './components/PlayStationIcon.vue'
+import TaskCenter from './components/TaskCenter.vue'
 import { useSystemStore } from './stores/system'
 import { useProfilesStore } from './stores/profiles'
 import { useLibraryStore } from './stores/library'
@@ -16,18 +19,16 @@ const tasks = useTasksStore()
 
 const pageInfo = computed(() => {
   const descriptions: Record<string, string> = {
-    '/': '从 fnOS 选择游戏内容并发送到指定 PS5 目录',
+    '/': '从飞牛存储选择文件发送到 PS5',
     '/tasks': '查看传输状态、实时速度和历史结果',
     '/files': '浏览并管理 PS5 上的文件和目录',
-    '/settings': '管理 PS5 连接与传输并发',
+    '/settings': '管理连接、传输与界面偏好',
   }
   return {
     title: String(route.meta.title || 'PS5 FTP Manager'),
     description: descriptions[route.path] || '',
   }
 })
-const activeCount = computed(() => tasks.items.filter((task) => ['queued', 'scanning', 'running', 'canceling'].includes(task.state)).length)
-
 onMounted(async () => {
   try {
     const data = await system.bootstrap()
@@ -45,18 +46,13 @@ onBeforeUnmount(() => tasks.stream?.close())
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <div class="brand">
+      <router-link class="brand" to="/" aria-label="返回首页">
         <img class="brand-logo" :src="logoUrl" alt="">
         <span class="brand-name">PS5 FTP Manager</span>
-      </div>
+      </router-link>
       <nav class="main-nav" aria-label="主导航">
-        <router-link to="/"><Send :size="15" />传输</router-link>
-        <router-link to="/tasks">
-          <ListTodo :size="15" />
-          任务
-          <span v-if="activeCount" class="nav-count">{{ activeCount }}</span>
-        </router-link>
-        <router-link to="/files"><FolderOpen :size="15" />PS5 文件</router-link>
+        <router-link to="/"><FnOSIcon :size="16" />飞牛传输</router-link>
+        <router-link to="/files"><PlayStationIcon :size="16" />PS5 文件</router-link>
         <router-link to="/settings"><Settings :size="15" />设置</router-link>
       </nav>
       <div class="app-state">
@@ -76,5 +72,6 @@ onBeforeUnmount(() => tasks.stream?.close())
       <t-alert v-if="system.error" theme="error" :message="system.error" />
       <router-view v-else />
     </main>
+    <TaskCenter />
   </div>
 </template>

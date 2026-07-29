@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import {
   ArrowLeft,
@@ -10,9 +10,11 @@ import {
   EyeOff,
   File,
   Folder,
+  FolderOpen,
   FolderInput,
   FolderPlus,
   Gamepad2,
+  Info,
   Pencil,
   RefreshCw,
   Send,
@@ -20,10 +22,15 @@ import {
   X,
 } from '@lucide/vue'
 import { formatBytes, joinPath, remoteParent } from '../api'
+import BrowserDeviceBar from './BrowserDeviceBar.vue'
+import PlayStationIcon from './PlayStationIcon.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
 import { usePS5FilesStore } from '../stores/ps5Files'
+import { useTasksStore } from '../stores/tasks'
+import { DesktopFileSelectionController } from '../file-browser/selection'
 import type { Entry, SourceLocator } from '../types'
+import type { FileSelectionSnapshot, IFileSelectionController, SelectionModifiers } from '../file-browser/selection'
 
 type BrowserMode = 'source' | 'manage' | 'destination'
 type SortKey = 'name' | 'size' | 'modified_at'
@@ -33,15 +40,18 @@ const props = withDefaults(defineProps<{
   modelValue?: string
   compact?: boolean
   picker?: boolean
+  selectedSources?: SourceLocator[]
 }>(), {
   mode: 'manage',
   modelValue: '/',
   compact: false,
   picker: false,
+  selectedSources: () => [],
 })
 
 const emit = defineEmits<{
   'update:modelValue': [path: string]
+  'update:selectedSources': [sources: SourceLocator[]]
   'choose-local-path': [locator: SourceLocator]
   'copy-to-ps5': []
   'copy-to-fnos': [entries: Entry[]]
@@ -49,7 +59,9 @@ const emit = defineEmits<{
 const library = useLibraryStore()
 const profiles = useProfilesStore()
 const files = usePS5FilesStore()
-const selectedPaths = ref<string[]>([])
+const tasks = useTasksStore()
+const selectionController: IFileSelectionController = new DesktopFileSelectionController()
+const selection = shallowRef<FileSelectionSnapshot>(selectionController.snapshot)
 const history = ref<string[]>([])
 const historyIndex = ref(-1)
 const busy = ref(false)
@@ -63,7 +75,14 @@ const moveEntries = ref<Entry[]>([])
 const moveLoading = ref(false)
 const deleteVisible = ref(false)
 const deleteConfirm = ref('')
-const contextMenu = reactive({ visible: false, x: 0, y: 0 })
+const propertiesVisible = ref(false)
+const propertiesEntry = ref<Entry | null>(null)
+const pickerTargetPath = ref(props.mode === 'source' ? '' : '/')
+const pickerFocusedPath = ref<string | null>(null)
+const lastEmittedTargetPath = ref<string | null>(null)
+const browserRoot = ref<globalThis.HTMLElement | null>(null)
+const contextMenuElement = ref<globalThis.HTMLElement | null>(null)
+const contextMenu = reactive({ visible: false, x: 0, y: 0, entryPath: '' })
 
 const isSource = computed(() => props.mode === 'source')
 const isDestination = computed(() => props.mode === 'destination')
@@ -77,10 +96,10 @@ const browserError = computed(() => isSource.value ? library.error : files.error
 const browserReady = computed(() => isSource.value ? Boolean(library.rootId) : Boolean(files.profileId))
 const visibleEntries = computed(() => isPicker.value ? browserEntries.value.filter((entry) => entry.is_dir) : browserEntries.value)
 const selectedEntries = computed(() => {
-  if (isSource.value) return library.selected.map((locator) => library.entries.find((entry) => entry.path === locator.path)).filter((entry): entry is Entry => Boolean(entry))
-  return selectedPaths.value.map((path) => files.entries.find((entry) => entry.path === path)).filter((entry): entry is Entry => Boolean(entry))
+  const selected = new Set(selection.value.selectedKeys)
+  return browserEntries.value.filter((entry) => selected.has(entry.path))
 })
-const selectionCount = computed(() => isLocalPicker.value ? 0 : isSource.value ? library.selected.length : selectedEntries.value.length)
+const selectionCount = computed(() => isPicker.value ? 0 : selectedEntries.value.length)
 const selectedSize = computed(() => selectedEntries.value.reduce((total, entry) => total + (entry.is_dir ? 0 : entry.size), 0))
 const singleSelection = computed(() => selectedEntries.value.length === 1 ? selectedEntries.value[0] : null)
 const canDelete = computed(() => selectedEntries.value.length === 1 || (selectedEntries.value.length > 1 && selectedEntries.value.every((entry) => !entry.is_dir)))
@@ -96,6 +115,11 @@ const sortedEntries = computed(() => [...visibleEntries.value].sort((left, right
   if (sort.key === 'modified_at') result = (left.modified_at || '').localeCompare(right.modified_at || '')
   return sort.descending ? -result : result
 }))
+const sortedEntryKeys = computed(() => sortedEntries.value.map((entry) => entry.path))
+const headerSelectionState = computed(() => {
+  void selection.value
+  return selectionController.visibleState(sortedEntryKeys.value)
+})
 
 function normalizeRemotePath(value: string) {
   const parts: string[] = []
@@ -158,13 +182,25 @@ function localBreadcrumbs() {
 watch(() => profiles.selectedId, (id) => { if (!isSource.value) void resetProfile(id) }, { immediate: true, flush: 'post' })
 watch(() => library.rootId, (id) => { if (isSource.value) void resetLibrary(id) }, { immediate: true, flush: 'post' })
 watch(() => props.modelValue, (value) => {
-  if (!isDestination.value || !files.profileId) return
+  if (!isDestination.value) return
   const path = normalizeRemotePath(value)
-  if (path !== files.path && isInsideBase(path, basePath.value)) void navigate(path)
+  if (!isInsideBase(path, basePath.value)) return
+  pickerTargetPath.value = path
+  if (lastEmittedTargetPath.value === path) {
+    lastEmittedTargetPath.value = null
+    return
+  }
+  if (files.profileId && path !== files.path) void navigate(path)
 })
+watch(() => props.selectedSources, (sources) => {
+  if (!isSource.value || isPicker.value) return
+  const keys = sources.filter((source) => source.root_id === library.rootId).map((source) => source.path)
+  if (keys.length === selection.value.selectedKeys.length && keys.every((key, index) => key === selection.value.selectedKeys[index])) return
+  selection.value = selectionController.replace(keys)
+}, { deep: true, immediate: true })
 
 async function resetLibrary(id: string) {
-  selectedPaths.value = []
+  clearSelection()
   history.value = []
   historyIndex.value = -1
   library.query = ''
@@ -176,7 +212,7 @@ async function resetLibrary(id: string) {
 async function resetProfile(id: string) {
   files.profileId = id
   files.query = ''
-  selectedPaths.value = []
+  clearSelection()
   history.value = []
   historyIndex.value = -1
   if (!id) {
@@ -192,19 +228,19 @@ async function resetProfile(id: string) {
 }
 
 async function navigate(path: string, record = true) {
+  if (!isPicker.value) clearSelection()
   if (isSource.value) {
     library.path = normalizeLocalPath(path)
   } else {
     const normalized = normalizeRemotePath(path || basePath.value)
     files.path = isInsideBase(normalized, basePath.value) ? normalized : basePath.value
   }
-  selectedPaths.value = []
   if (isSource.value) await library.load()
   else await files.load()
   if (isLocalPicker.value) {
-    emit('choose-local-path', { root_id: library.rootId, path: library.path })
-  } else if (isDestination.value && props.modelValue !== files.path) {
-    emit('update:modelValue', files.path)
+    pickDirectoryPath(library.path)
+  } else if (isDestination.value) {
+    pickDirectoryPath(files.path)
   }
   if (browserError.value || !record) return
   history.value = history.value.slice(0, historyIndex.value + 1)
@@ -233,55 +269,59 @@ function goUp() {
 
 function open(entry: Entry) {
   if (entry.is_dir) void navigate(entry.path)
-  else if (isSource.value && !isLocalPicker.value) library.toggle(entry)
+  else if (!isPicker.value) showProperties(entry)
 }
 
-function selectEntry(entry: Entry, event?: { ctrlKey: boolean; metaKey: boolean }) {
-  if (isPicker.value) return
-  if (isSource.value) {
-    if (event?.ctrlKey || event?.metaKey || !library.isSelected(entry)) library.toggle(entry)
+function applySelection(snapshot: FileSelectionSnapshot, notify = true) {
+  selection.value = snapshot
+  if (notify && isSource.value && !isPicker.value) {
+    emit('update:selectedSources', snapshot.selectedKeys.map((path) => ({ root_id: library.rootId, path })))
+  }
+}
+
+function selectEntry(entry: Entry, modifiers?: SelectionModifiers) {
+  if (isPicker.value) {
+    pickDirectoryPath(entry.path)
     return
   }
-  if (event?.ctrlKey || event?.metaKey) {
-    selectedPaths.value = selectedPaths.value.includes(entry.path)
-      ? selectedPaths.value.filter((path) => path !== entry.path)
-      : [...selectedPaths.value, entry.path]
-    return
-  }
-  selectedPaths.value = [entry.path]
+  applySelection(selectionController.select({ key: entry.path, orderedKeys: sortedEntryKeys.value, modifiers }))
 }
 
 function toggleEntry(entry: Entry) {
-  if (isSource.value) { library.toggle(entry); return }
-  selectedPaths.value = selectedPaths.value.includes(entry.path)
-    ? selectedPaths.value.filter((path) => path !== entry.path)
-    : [...selectedPaths.value, entry.path]
+  if (isPicker.value) return
+  applySelection(selectionController.toggle(entry.path))
 }
 
 function toggleAll() {
   if (isPicker.value) return
-  if (isSource.value) {
-    const allSelected = sortedEntries.value.length > 0 && sortedEntries.value.every((entry) => library.isSelected(entry))
-    if (allSelected) {
-      const shown = new Set(sortedEntries.value.map((entry) => entry.path))
-      library.selected = library.selected.filter((locator) => locator.root_id !== library.rootId || !shown.has(locator.path))
-    } else {
-      sortedEntries.value.forEach((entry) => { if (!library.isSelected(entry)) library.toggle(entry) })
-    }
-    return
-  }
-  selectedPaths.value = selectedPaths.value.length === sortedEntries.value.length ? [] : sortedEntries.value.map((entry) => entry.path)
+  applySelection(selectionController.toggleVisible(sortedEntryKeys.value))
 }
 
 function isEntrySelected(entry: Entry) {
   if (isPicker.value) return false
-  return isSource.value ? library.isSelected(entry) : selectedPaths.value.includes(entry.path)
+  void selection.value
+  return selectionController.isSelected(entry.path)
 }
 
 function clearSelection() {
   if (isPicker.value) return
-  if (isSource.value) library.selected = []
-  else selectedPaths.value = []
+  applySelection(selectionController.clear())
+}
+
+function pickDirectoryPath(path: string) {
+  if (!isPicker.value) return
+  const target = isSource.value ? normalizeLocalPath(path) : normalizeRemotePath(path)
+  pickerTargetPath.value = target
+  if (isLocalPicker.value) {
+    emit('choose-local-path', { root_id: library.rootId, path: target })
+    return
+  }
+  lastEmittedTargetPath.value = target
+  if (props.modelValue !== target) emit('update:modelValue', target)
+}
+
+function isPickerTarget(entry: Entry) {
+  return isPicker.value && pickerTargetPath.value === entry.path
 }
 
 function toggleHidden() {
@@ -325,6 +365,13 @@ function showRename() {
   editVisible.value = true
 }
 
+function showProperties(entry: Entry | null = singleSelection.value) {
+  if (!entry || isPicker.value) return
+  propertiesEntry.value = entry
+  propertiesVisible.value = true
+  closeContextMenu()
+}
+
 function validName(name: string) {
   return Boolean(name) && name !== '.' && name !== '..' && !/[\\/]/.test(name)
 }
@@ -343,7 +390,7 @@ async function applyEdit() {
     } else if (singleSelection.value) {
       await files.operation({ action: 'rename', path: singleSelection.value.path, destination: joinPath(files.path, name) })
     }
-    selectedPaths.value = []
+    clearSelection()
     editVisible.value = false
     await MessagePlugin.success(edit.mode === 'mkdir' ? '文件夹已创建' : '名称已更新')
   } catch (error) {
@@ -377,7 +424,7 @@ async function applyMove() {
       if (destination !== entry.path) await files.operation({ action: 'move', path: entry.path, destination }, false)
     }
     moveVisible.value = false
-    selectedPaths.value = []
+    clearSelection()
     await files.load()
     await MessagePlugin.success('已移动到目标文件夹')
   } catch (error) {
@@ -401,7 +448,7 @@ function askDelete() {
       busy.value = true
       try {
         for (const entry of entries) await files.operation({ action: 'delete', path: entry.path, is_dir: false }, false)
-        selectedPaths.value = []
+        clearSelection()
         await files.load()
         dialog.destroy()
         await MessagePlugin.success('文件已删除')
@@ -419,8 +466,11 @@ async function applyDirectoryDelete() {
   try {
     const result = await files.operation({ action: 'delete', path: entry.path, is_dir: true, recursive: true, confirm_name: deleteConfirm.value })
     deleteVisible.value = false
-    selectedPaths.value = []
-    if (result.task) await MessagePlugin.warning('递归删除已加入任务中心')
+    clearSelection()
+    if (result.task) {
+      tasks.openCenter()
+      await MessagePlugin.warning('递归删除已加入任务中心')
+    }
   } catch (error) {
     await MessagePlugin.error(error instanceof Error ? error.message : String(error))
   } finally { busy.value = false }
@@ -436,21 +486,29 @@ function closeContextMenu(event?: { composedPath?: () => unknown[] }) {
 }
 
 function selectForContextMenu(entry: Entry) {
-  if (isSource.value) {
-    if (!library.isSelected(entry)) library.selected = [{ root_id: library.rootId, path: entry.path }]
-    return
-  }
-  if (!selectedPaths.value.includes(entry.path)) selectedPaths.value = [entry.path]
+  applySelection(selectionController.prepareContextMenu(entry.path))
+}
+
+async function openContextMenu(entry: Entry, x: number, y: number) {
+  selectForContextMenu(entry)
+  contextMenu.entryPath = entry.path
+  contextMenu.x = x
+  contextMenu.y = y
+  contextMenu.visible = true
+  await nextTick()
+  const menu = contextMenuElement.value
+  if (!menu) return
+  const rect = menu.getBoundingClientRect()
+  contextMenu.x = Math.max(4, Math.min(x, globalThis.innerWidth - rect.width - 4))
+  contextMenu.y = Math.max(4, Math.min(y, globalThis.innerHeight - rect.height - 4))
+  menu.querySelector<globalThis.HTMLButtonElement>('button:not(:disabled)')?.focus()
 }
 
 function showContextMenu(event: { preventDefault: () => void; stopPropagation: () => void; clientX: number; clientY: number }, entry: Entry) {
   if (isPicker.value) return
   event.preventDefault()
   event.stopPropagation()
-  selectForContextMenu(entry)
-  contextMenu.x = event.clientX
-  contextMenu.y = event.clientY
-  contextMenu.visible = true
+  void openContextMenu(entry, event.clientX, event.clientY)
 }
 
 function copyToPS5() {
@@ -466,8 +524,104 @@ function copyToFnOS() {
   emit('copy-to-fnos', entries)
 }
 
+function openSelection() {
+  if (singleSelection.value) open(singleSelection.value)
+  closeContextMenu()
+}
+
+function focusRow(path: string | null) {
+  if (!path) return
+  void nextTick(() => {
+    const rows = browserRoot.value?.querySelectorAll<globalThis.HTMLTableRowElement>('tr[data-entry-path]')
+    const row = rows ? [...rows].find((candidate) => candidate.dataset.entryPath === path) : undefined
+    row?.focus()
+  })
+}
+
+function rowTabIndex(entry: Entry, index: number) {
+  const focusedPath = isPicker.value ? pickerFocusedPath.value : selection.value.focusedKey
+  return focusedPath ? (focusedPath === entry.path ? 0 : -1) : (index === 0 ? 0 : -1)
+}
+
+function handleRowFocus(entry: Entry) {
+  if (isPicker.value) {
+    pickerFocusedPath.value = entry.path
+    return
+  }
+  if (!selection.value.focusedKey) selectEntry(entry)
+}
+
+function movePickerFocus(direction: -1 | 1 | 'first' | 'last') {
+  if (!sortedEntryKeys.value.length) return
+  const currentIndex = pickerFocusedPath.value ? sortedEntryKeys.value.indexOf(pickerFocusedPath.value) : -1
+  let targetIndex: number
+  if (direction === 'first') targetIndex = 0
+  else if (direction === 'last') targetIndex = sortedEntryKeys.value.length - 1
+  else if (currentIndex < 0) targetIndex = direction > 0 ? 0 : sortedEntryKeys.value.length - 1
+  else targetIndex = Math.max(0, Math.min(sortedEntryKeys.value.length - 1, currentIndex + direction))
+  pickerFocusedPath.value = sortedEntryKeys.value[targetIndex]
+  focusRow(pickerFocusedPath.value)
+}
+
+function handleRowKeydown(event: globalThis.KeyboardEvent, entry: Entry) {
+  if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
+    if (isPicker.value) return
+    event.preventDefault()
+    const rect = (event.currentTarget as globalThis.HTMLElement).getBoundingClientRect()
+    void openContextMenu(entry, rect.left + 24, rect.top + 24)
+    return
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    open(entry)
+    return
+  }
+  if (event.key === ' ') {
+    event.preventDefault()
+    if (isPicker.value) pickDirectoryPath(entry.path)
+    else toggleEntry(entry)
+    return
+  }
+  if (event.key === 'Escape') {
+    if (!isPicker.value) clearSelection()
+    return
+  }
+  if (!isPicker.value && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+    event.preventDefault()
+    applySelection(selectionController.replace(sortedEntryKeys.value))
+    return
+  }
+  const direction = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : event.key === 'Home' ? 'first' : event.key === 'End' ? 'last' : null
+  if (direction === null) return
+  event.preventDefault()
+  if (isPicker.value) {
+    movePickerFocus(direction)
+    return
+  }
+  const snapshot = selectionController.moveFocus({
+    orderedKeys: sortedEntryKeys.value,
+    direction,
+    modifiers: { shiftKey: event.shiftKey },
+  })
+  applySelection(snapshot)
+  focusRow(snapshot.focusedKey)
+}
+
+function handleTableBackgroundClick(event: globalThis.MouseEvent) {
+  if (isPicker.value || browserLoading.value) return
+  const target = event.target
+  if (!(target instanceof globalThis.Element)) return
+  if (target.closest('tr[data-entry-path]') || target.closest('thead')) return
+  clearSelection()
+}
+
+function handleGlobalKeydown(event: globalThis.KeyboardEvent) {
+  if (event.key === 'Escape' && contextMenu.visible) closeContextMenu()
+}
+
 onMounted(() => {
   globalThis.addEventListener('pointerdown', closeContextMenu)
+  globalThis.addEventListener('keydown', handleGlobalKeydown)
   // Bootstrap assigns the first Library Root after the initial route has
   // mounted. The watcher above covers the normal case; this closes the
   // remaining mount-timing gap without reloading an already active browser.
@@ -475,18 +629,22 @@ onMounted(() => {
     void resetLibrary(library.rootId)
   }
 })
-onBeforeUnmount(() => globalThis.removeEventListener('pointerdown', closeContextMenu))
+onBeforeUnmount(() => {
+  globalThis.removeEventListener('pointerdown', closeContextMenu)
+  globalThis.removeEventListener('keydown', handleGlobalKeydown)
+})
 </script>
 
 <template>
-  <section :class="['file-station', { 'is-compact': compact, 'is-destination': isDestination, 'is-source': isSource }]">
-    <header v-if="!compact" class="station-devicebar">
-      <div class="station-device">
-        <span class="device-mark"><Gamepad2 :size="17" /></span>
-        <div><strong>{{ profiles.selected?.name || '尚未选择 PS5' }}</strong><small v-if="profiles.selected">{{ profiles.selected.host }}:{{ profiles.selected.port }} · {{ profiles.selected.preset }}</small><small v-else>请先在设置中添加连接</small></div>
-      </div>
-      <t-select v-model="profiles.selectedId" :options="profiles.items.map(profile => ({ label: profile.name, value: profile.id }))" placeholder="选择 PS5" class="station-profile-select" />
-    </header>
+  <section ref="browserRoot" :class="['file-station', { 'is-compact': compact, 'is-destination': isDestination, 'is-source': isSource }]">
+    <BrowserDeviceBar
+      v-if="!compact"
+      :title="profiles.selected?.name || '尚未选择 PS5'"
+      :subtitle="profiles.selected ? `${profiles.selected.host}:${profiles.selected.port} · ${profiles.selected.preset}` : '请先在设置中添加连接'"
+    >
+      <template #icon><PlayStationIcon :size="18" /></template>
+      <template #control><t-select v-model="profiles.selectedId" :options="profiles.items.map(profile => ({ label: profile.name, value: profile.id }))" placeholder="选择 PS5" class="station-profile-select devicebar-select" /></template>
+    </BrowserDeviceBar>
 
     <div class="station-navigation">
       <div class="navigation-buttons">
@@ -502,7 +660,7 @@ onBeforeUnmount(() => globalThis.removeEventListener('pointerdown', closeContext
         </template>
       </nav>
       <t-input v-if="isSource" v-model="library.query" clearable placeholder="搜索当前文件夹" class="station-search" @enter="library.load()" @clear="library.load()" />
-      <t-input v-else v-model="files.query" clearable placeholder="搜索当前文件夹" class="station-search" @enter="selectedPaths = []; files.load()" @clear="files.load()" />
+      <t-input v-else v-model="files.query" clearable placeholder="搜索当前文件夹" class="station-search" @enter="clearSelection(); files.load()" @clear="files.load()" />
     </div>
 
     <div v-if="!isPicker" class="station-actions">
@@ -526,7 +684,7 @@ onBeforeUnmount(() => globalThis.removeEventListener('pointerdown', closeContext
 
     <t-alert v-if="browserError" theme="error" :message="browserError" class="station-error" />
 
-    <div class="station-table-wrap">
+    <div class="station-table-wrap" @click="handleTableBackgroundClick">
       <table :class="['station-table', { 'is-destination-table': isPicker }]">
         <thead>
           <tr v-if="isPicker">
@@ -534,7 +692,7 @@ onBeforeUnmount(() => globalThis.removeEventListener('pointerdown', closeContext
             <th class="time-column"><button @click="changeSort('modified_at')">修改时间 <span>{{ sortMark('modified_at') }}</span></button></th>
           </tr>
           <tr v-else>
-            <th class="check-column" @click.stop @dblclick.stop @keydown.stop @mousedown.stop><t-checkbox :checked="Boolean(sortedEntries.length) && sortedEntries.every(entry => isEntrySelected(entry))" @change="toggleAll" /></th>
+            <th class="check-column" @click.stop @dblclick.stop @keydown.stop @mousedown.stop><t-checkbox :checked="headerSelectionState === 'all'" :indeterminate="headerSelectionState === 'partial'" @change="toggleAll" /></th>
             <th><button @click="changeSort('name')">名称 <span>{{ sortMark('name') }}</span></button></th>
             <th class="type-column">类型</th>
             <th class="size-column"><button @click="changeSort('size')">大小 <span>{{ sortMark('size') }}</span></button></th>
@@ -543,15 +701,15 @@ onBeforeUnmount(() => globalThis.removeEventListener('pointerdown', closeContext
         </thead>
         <tbody :class="{ 'is-loading': browserLoading }">
           <template v-if="isPicker">
-            <tr v-for="entry in sortedEntries" :key="entry.path" :data-entry-path="entry.path" tabindex="0" @dblclick="open(entry)" @keydown.enter="open(entry)">
-              <td><button class="station-file-name" @dblclick.stop="open(entry)"><Folder class="file-type-icon is-folder" :size="17" /><span>{{ entry.name }}</span></button></td>
+            <tr v-for="(entry, index) in sortedEntries" :key="entry.path" :data-entry-path="entry.path" :class="{ 'is-target': isPickerTarget(entry) }" :tabindex="rowTabIndex(entry, index)" @click="selectEntry(entry)" @dblclick="open(entry)" @focus="handleRowFocus(entry)" @keydown="handleRowKeydown($event, entry)">
+              <td><span class="station-file-name" @dblclick.stop="open(entry)"><Folder class="file-type-icon is-folder" :size="17" /><span>{{ entry.name }}</span></span></td>
               <td class="time-column">{{ formatModified(entry.modified_at) }}</td>
             </tr>
           </template>
           <template v-else>
-            <tr v-for="entry in sortedEntries" :key="entry.path" :data-entry-path="entry.path" :class="{ 'is-selected': isEntrySelected(entry) }" tabindex="0" @click="selectEntry(entry, $event)" @contextmenu="showContextMenu($event, entry)" @dblclick="open(entry)" @keydown.enter="open(entry)">
+            <tr v-for="(entry, index) in sortedEntries" :key="entry.path" :data-entry-path="entry.path" :class="{ 'is-selected': isEntrySelected(entry) }" :tabindex="rowTabIndex(entry, index)" @click="selectEntry(entry, $event)" @contextmenu="showContextMenu($event, entry)" @dblclick="open(entry)" @focus="handleRowFocus(entry)" @keydown="handleRowKeydown($event, entry)">
               <td class="check-column" @click.stop @dblclick.stop @keydown.stop @mousedown.stop><t-checkbox :checked="isEntrySelected(entry)" @change="toggleEntry(entry)" /></td>
-              <td><button class="station-file-name" @dblclick.stop="open(entry)"><Gamepad2 v-if="entry.game_kind" class="file-type-icon is-game" :size="17" /><Folder v-else-if="entry.is_dir" class="file-type-icon is-folder" :size="17" /><File v-else class="file-type-icon" :size="16" /><span class="file-name-copy"><span>{{ entry.name }}</span><small v-if="entry.game_kind">{{ entry.game_kind === 'game-directory' ? 'PS5 游戏目录' : '游戏镜像' }}</small></span></button></td>
+              <td><span class="station-file-name" @dblclick.stop="open(entry)"><Gamepad2 v-if="entry.game_kind" class="file-type-icon is-game" :size="17" /><Folder v-else-if="entry.is_dir" class="file-type-icon is-folder" :size="17" /><File v-else class="file-type-icon" :size="16" /><span class="file-name-copy"><span>{{ entry.name }}</span><small v-if="entry.game_kind">{{ entry.game_kind === 'game-directory' ? 'PS5 游戏目录' : '游戏镜像' }}</small></span></span></td>
               <td class="type-column">{{ entryType(entry) }}</td>
               <td class="size-column">{{ entry.is_dir ? '—' : formatBytes(entry.size) }}</td>
               <td class="time-column">{{ formatModified(entry.modified_at) }}</td>
@@ -569,7 +727,7 @@ onBeforeUnmount(() => globalThis.removeEventListener('pointerdown', closeContext
         <span>{{ browserEntries.length }} 个项目</span><strong v-if="selectionCount">已选择 {{ selectionCount }} 项</strong>
       </template>
       <template v-else-if="isPicker">
-        <span>当前选择</span><strong class="destination-path">{{ currentPath || '根目录' }}</strong>
+        <span>目标目录</span><strong class="destination-path">{{ pickerTargetPath || '根目录' }}</strong>
       </template>
       <template v-else>
         <span>{{ files.entries.length }} 个项目</span>
@@ -580,17 +738,18 @@ onBeforeUnmount(() => globalThis.removeEventListener('pointerdown', closeContext
   </section>
 
   <Teleport to="body">
-    <div v-if="contextMenu.visible" class="file-context-menu" :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }" @click.stop @contextmenu.prevent>
+    <div v-if="contextMenu.visible" ref="contextMenuElement" class="file-context-menu" role="menu" :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }" @click.stop @contextmenu.prevent @keydown.esc.stop="closeContextMenu()">
+      <button role="menuitem" :disabled="!singleSelection" @click="openSelection"><FolderOpen :size="15" />打开</button>
       <template v-if="isSource">
-        <button :disabled="!selectionCount" @click="copyToPS5"><Send :size="15" />复制到 PS5</button>
-        <button :disabled="!selectionCount" @click="clearSelection(); closeContextMenu()"><X :size="15" />取消选择</button>
+        <button role="menuitem" :disabled="!selectionCount" @click="copyToPS5"><Send :size="15" />复制到 PS5</button>
       </template>
       <template v-else>
-        <button :disabled="!selectedEntries.length" @click="copyToFnOS"><Download :size="15" />复制到飞牛</button>
-        <button :disabled="!singleSelection" @click="showRename(); closeContextMenu()"><Pencil :size="15" />重命名</button>
-        <button :disabled="!selectedEntries.length" @click="showMove(); closeContextMenu()"><FolderInput :size="15" />移动到</button>
-        <button class="is-danger" :disabled="!canDelete" @click="askDelete(); closeContextMenu()"><Trash2 :size="15" />删除</button>
+        <button role="menuitem" :disabled="!selectedEntries.length" @click="copyToFnOS"><Download :size="15" />复制到飞牛</button>
+        <button role="menuitem" :disabled="!singleSelection" @click="showRename(); closeContextMenu()"><Pencil :size="15" />重命名</button>
+        <button role="menuitem" :disabled="!selectedEntries.length" @click="showMove(); closeContextMenu()"><FolderInput :size="15" />移动到</button>
+        <button role="menuitem" class="is-danger" :disabled="!canDelete" @click="askDelete(); closeContextMenu()"><Trash2 :size="15" />删除</button>
       </template>
+      <button role="menuitem" :disabled="!singleSelection" @click="showProperties()"><Info :size="15" />属性</button>
     </div>
   </Teleport>
 
@@ -599,6 +758,16 @@ onBeforeUnmount(() => globalThis.removeEventListener('pointerdown', closeContext
       <t-form-item label="名称"><t-input v-model="edit.name" autofocus @enter="applyEdit" /></t-form-item>
       <p class="dialog-path-hint">位置：{{ files.path }}</p>
     </t-form>
+  </t-dialog>
+
+  <t-dialog v-model:visible="propertiesVisible" header="属性" :confirm-btn="{ content: '关闭' }" @confirm="propertiesVisible = false">
+    <dl v-if="propertiesEntry" class="file-properties">
+      <div><dt>名称</dt><dd>{{ propertiesEntry.name }}</dd></div>
+      <div><dt>类型</dt><dd>{{ entryType(propertiesEntry) }}</dd></div>
+      <div><dt>大小</dt><dd>{{ propertiesEntry.is_dir ? '—' : formatBytes(propertiesEntry.size) }}</dd></div>
+      <div><dt>修改时间</dt><dd>{{ formatModified(propertiesEntry.modified_at) }}</dd></div>
+      <div v-if="!isSource"><dt>路径</dt><dd>{{ propertiesEntry.path }}</dd></div>
+    </dl>
   </t-dialog>
 
   <template v-if="!isDestination && !isSource">
