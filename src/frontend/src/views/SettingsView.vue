@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
-import { Gamepad2, Pencil, Plus, PlugZap, Trash2 } from '@lucide/vue'
+import { Pencil, Plus, PlugZap, Trash2 } from '@lucide/vue'
 import ConnectionTestDialog from '../components/ConnectionTestDialog.vue'
+import PlayStationIcon from '../components/PlayStationIcon.vue'
 import { useProfilesStore } from '../stores/profiles'
 import { useSystemStore } from '../stores/system'
 import type { Profile } from '../types'
@@ -40,7 +41,7 @@ function test(profile: Profile) {
         <div class="settings-action"><div><strong>连接配置</strong><small>支持 zftpd、ftpsrv 和自定义端口</small></div><t-button theme="primary" variant="outline" @click="edit()"><Plus :size="15" />添加 PS5</t-button></div>
         <div v-if="profiles.items.length" class="profile-list">
           <div v-for="profile in profiles.items" :key="profile.id" class="profile-row">
-            <span class="profile-avatar"><Gamepad2 :size="15" /></span>
+            <span class="profile-avatar"><PlayStationIcon :size="16" /></span>
             <div class="profile-info"><strong>{{ profile.name }}</strong><small>{{ profile.host }}:{{ profile.port }} · {{ profile.base_path }}</small></div>
             <span class="profile-type">{{ profile.preset }}</span>
             <div class="row-actions"><t-button variant="text" size="small" @click="test(profile)"><PlugZap :size="14" />测试连接</t-button><t-button variant="text" size="small" @click="edit(profile)"><Pencil :size="14" />编辑</t-button><t-button variant="text" theme="danger" size="small" @click="remove(profile)"><Trash2 :size="14" />删除</t-button></div>

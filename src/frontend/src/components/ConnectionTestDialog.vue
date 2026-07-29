@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { CheckCircle2, CircleMinus, LoaderCircle, Server, XCircle } from '@lucide/vue'
+import { CheckCircle2, CircleMinus, LoaderCircle, XCircle } from '@lucide/vue'
+import PlayStationIcon from './PlayStationIcon.vue'
 import { useProfilesStore } from '../stores/profiles'
 import type { ConnectionCheck, ConnectionTestResult, Profile } from '../types'
 
@@ -81,7 +82,7 @@ onBeforeUnmount(() => controller?.abort())
   >
     <div v-if="profile" class="connection-test" aria-live="polite">
       <div class="connection-target">
-        <span class="connection-target-icon"><Server :size="17" /></span>
+        <span class="connection-target-icon"><PlayStationIcon :size="18" /></span>
         <div><strong>{{ profile.name }}</strong><small>{{ target }} · {{ profile.preset }} · {{ profile.base_path }}</small></div>
       </div>
 

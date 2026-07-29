@@ -22,6 +22,8 @@ import {
   X,
 } from '@lucide/vue'
 import { formatBytes, joinPath, remoteParent } from '../api'
+import BrowserDeviceBar from './BrowserDeviceBar.vue'
+import PlayStationIcon from './PlayStationIcon.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
 import { usePS5FilesStore } from '../stores/ps5Files'
@@ -635,13 +637,14 @@ onBeforeUnmount(() => {
 
 <template>
   <section ref="browserRoot" :class="['file-station', { 'is-compact': compact, 'is-destination': isDestination, 'is-source': isSource }]">
-    <header v-if="!compact" class="station-devicebar">
-      <div class="station-device">
-        <span class="device-mark"><Gamepad2 :size="17" /></span>
-        <div><strong>{{ profiles.selected?.name || '尚未选择 PS5' }}</strong><small v-if="profiles.selected">{{ profiles.selected.host }}:{{ profiles.selected.port }} · {{ profiles.selected.preset }}</small><small v-else>请先在设置中添加连接</small></div>
-      </div>
-      <t-select v-model="profiles.selectedId" :options="profiles.items.map(profile => ({ label: profile.name, value: profile.id }))" placeholder="选择 PS5" class="station-profile-select" />
-    </header>
+    <BrowserDeviceBar
+      v-if="!compact"
+      :title="profiles.selected?.name || '尚未选择 PS5'"
+      :subtitle="profiles.selected ? `${profiles.selected.host}:${profiles.selected.port} · ${profiles.selected.preset}` : '请先在设置中添加连接'"
+    >
+      <template #icon><PlayStationIcon :size="18" /></template>
+      <template #control><t-select v-model="profiles.selectedId" :options="profiles.items.map(profile => ({ label: profile.name, value: profile.id }))" placeholder="选择 PS5" class="station-profile-select devicebar-select" /></template>
+    </BrowserDeviceBar>
 
     <div class="station-navigation">
       <div class="navigation-buttons">

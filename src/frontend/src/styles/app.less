@@ -57,12 +57,16 @@ button, input { font: inherit; }
 }
 .browser-pane { min-width: 0; min-height: 0; display: grid; grid-template-rows: 72px 48px 32px minmax(0, 1fr) 52px; }
 .browser-pane + .browser-pane { border-left: 1px solid @border; }
-.unified-browser-pane { grid-template-rows: 72px minmax(0, 1fr); }
-.pane-header { padding: 0 18px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid @border-light; }
-.pane-header > div { min-width: 0; display: flex; align-items: center; gap: 11px; }
-.pane-header h2 { margin: 0; font-size: 15px; line-height: 1.4; font-weight: 650; }
-.pane-header p { margin: 2px 0 0; color: @text-tertiary; font-size: 11px; white-space: nowrap; }
-.pane-icon { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto; color: @text-secondary; background: @surface-subtle; border: 1px solid @border; border-radius: 3px; }
+.unified-browser-pane { grid-template-rows: 64px minmax(0, 1fr); }
+.browser-devicebar { height: 64px; min-height: 64px; padding: 10px 14px 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex: 0 0 64px; border-bottom: 1px solid @border; }
+.browser-devicebar-context { min-width: 0; display: flex; align-items: center; gap: 11px; }
+.browser-devicebar-icon { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; color: @text-secondary; background: @surface-subtle; border: 1px solid @border; border-radius: 3px; }
+.browser-devicebar-copy { min-width: 0; }
+.browser-devicebar-copy strong, .browser-devicebar-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-devicebar-copy strong { font-size: 14px; font-weight: 600; }
+.browser-devicebar-copy small { margin-top: 2px; color: @text-tertiary; font-size: 11px; }
+.browser-devicebar-control { flex: 0 0 auto; }
+.browser-devicebar .devicebar-select { width: 220px; }
 .location-select { width: 200px; flex: 0 0 auto; }
 .browser-nav { padding: 0 12px; display: flex; align-items: center; gap: 8px; background: @surface-subtle; border-bottom: 1px solid @border-light; }
 .breadcrumb { min-width: 0; flex: 1; display: flex; align-items: center; gap: 6px; overflow: hidden; color: @text-secondary; font-size: 12px; white-space: nowrap; }
@@ -169,12 +173,6 @@ button, input { font: inherit; }
 
 .file-station { min-height: 570px; display: flex; flex-direction: column; overflow: hidden; background: @surface; border: 1px solid @border; }
 .file-station.is-compact { height: 100%; min-height: 0; border: 0; }
-.station-devicebar { min-height: 64px; padding: 10px 14px 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid @border; }
-.station-device { min-width: 0; display: flex; align-items: center; gap: 10px; }
-.station-device strong, .station-device small { display: block; }
-.station-device strong { font-size: 14px; font-weight: 600; }
-.station-device small { margin-top: 2px; color: @text-tertiary; font-size: 11px; }
-.device-mark { width: 34px; height: 34px; display: grid; place-items: center; color: #fff; background: #34425f; border-radius: 3px; font-size: 9px; font-weight: 700; letter-spacing: .04em; }
 .station-profile-select { width: 220px; }
 .station-navigation { min-height: 48px; padding: 7px 12px; display: flex; align-items: center; gap: 10px; background: @surface-subtle; border-bottom: 1px solid @border; }
 .navigation-buttons { display: flex; align-items: center; border-right: 1px solid @border; padding-right: 8px; }
@@ -443,8 +441,8 @@ button, input { font: inherit; }
   .app-header { grid-template-columns: 210px 1fr 190px; padding: 0 20px; }
   .main-nav { gap: 16px; }
   .page-shell { width: calc(100% - 32px); }
-  .pane-header p { display: none; }
   .location-select { width: 160px; }
+  .browser-devicebar .devicebar-select { width: 180px; }
   .browser-search { width: 140px; }
   .task-row, .task-table-head { grid-template-columns: 80px minmax(260px, 1fr) 110px 130px 108px; gap: 12px; }
   .history-row, .history-table-head { grid-template-columns: 80px minmax(260px, 1fr) 150px 108px; }
@@ -464,13 +462,14 @@ button, input { font: inherit; }
   .files-page, .files-page > .file-station { min-height: 520px; }
   .browser-pane + .browser-pane { border-left: 0; border-top: 1px solid @border; }
   .browser-pane { height: 520px; min-height: 520px; }
-  .unified-browser-pane { grid-template-rows: 72px minmax(0, 1fr); }
+  .unified-browser-pane { grid-template-rows: 58px minmax(0, 1fr); }
   .task-row, .task-table-head { grid-template-columns: 76px minmax(240px, 1fr) 110px 108px; }
   .history-row, .history-table-head { grid-template-columns: 76px minmax(220px, 1fr) 110px 108px; }
   .task-row > .task-measure:nth-of-type(4) { display: none; }
   .task-table-head:not(.history-table-head) > span:nth-of-type(4) { display: none; }
-  .station-devicebar { min-height: 58px; }
+  .browser-devicebar { height: 58px; min-height: 58px; flex-basis: 58px; }
   .station-profile-select { width: 180px; }
+  .browser-devicebar .devicebar-select { width: 180px; }
   .station-search { width: 170px; }
   .station-table .type-column { display: none; }
   .station-table .time-column { width: 145px; }
