@@ -12,7 +12,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/domain"
 )
 
 const (

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/domain"
 )
 
 const extractionColumns = `id,source_root_id,source_path,destination_root_id,destination_parent,destination_path,delete_sources,state,total_bytes,extracted_bytes,speed_bytes,eta_seconds,current_file,total_items,completed_items,error,warning,retry_of,created_at,started_at,finished_at`

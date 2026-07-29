@@ -13,8 +13,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/store"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/domain"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/store"
 )
 
 type Library struct {

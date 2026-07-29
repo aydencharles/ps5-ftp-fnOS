@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	archiveengine "github.com/chenpy/ps5-ftp-fnos/src/backend/internal/archive"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
+	archiveengine "github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/archive"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/domain"
 )
 
 func normalizedLocalPath(value string) string {

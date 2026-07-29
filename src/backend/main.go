@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/extractqueue"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/library"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/queue"
-	appRuntime "github.com/chenpy/ps5-ftp-fnos/src/backend/internal/runtime"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/store"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/web"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/extractqueue"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/library"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/queue"
+	appRuntime "github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/runtime"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/store"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/web"
 )
 
 func main() {

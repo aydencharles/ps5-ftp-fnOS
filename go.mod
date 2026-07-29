@@ -1,4 +1,4 @@
-module github.com/chenpy/ps5-ftp-fnos
+module github.com/aydencharles/ps5-ftp-fnOS
 
 go 1.26
 

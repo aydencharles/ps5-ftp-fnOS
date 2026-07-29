@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/domain"
 )
 
 func TestResolveRejectsTraversalAndEscapingSymlink(t *testing.T) {

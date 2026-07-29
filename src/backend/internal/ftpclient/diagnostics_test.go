@@ -10,7 +10,7 @@ import (
 
 	ftp "github.com/jlaffaye/ftp"
 
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/domain"
 )
 
 func TestDiagnoseProbeErrorClassifiesRecoverableFailures(t *testing.T) {

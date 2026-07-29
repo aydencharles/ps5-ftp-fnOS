@@ -14,10 +14,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/ftpclient"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/library"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/store"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/domain"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/ftpclient"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/library"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/store"
 )
 
 type execution struct {
