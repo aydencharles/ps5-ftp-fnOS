@@ -105,6 +105,12 @@ describe('File Browser', () => {
     })
   }
 
+  function mountManage() {
+    return mount(FileBrowser, {
+      global: { stubs, mocks: { $router: { push: vi.fn() } } },
+    })
+  }
+
   function mountSource(selectedSources: SourceLocator[] = []) {
     const library = useLibraryStore()
     library.hydrate([{ id: 'vol2', label: '存储空间 2', favorite: false, kind: 'volume' }])
@@ -128,6 +134,24 @@ describe('File Browser', () => {
     expect(breadcrumb.text()).not.toContain('//')
     expect(wrapper.findAll('tbody tr[data-entry-path]').map((row) => row.attributes('data-entry-path'))).toEqual(['/data/homebrew/Games'])
     expect(wrapper.text()).not.toContain('eboot.bin')
+  })
+
+  it('defines table columns so responsive layouts can collapse hidden columns', async () => {
+    const manager = mountManage()
+    const destination = mountDestination()
+    await flushPromises()
+
+    expect(manager.findAll('.station-table col').map((column) => column.classes().join(' '))).toEqual([
+      'check-column',
+      '',
+      'type-column',
+      'size-column',
+      'time-column',
+    ])
+    expect(destination.findAll('.station-table col').map((column) => column.classes().join(' '))).toEqual([
+      '',
+      'time-column',
+    ])
   })
 
   it('shows PS5 connection failures as a global message instead of page content', async () => {

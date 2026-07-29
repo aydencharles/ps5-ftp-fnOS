@@ -717,6 +717,17 @@ onBeforeUnmount(() => {
 
     <div class="station-table-wrap" @click="handleTableBackgroundClick">
       <table :class="['station-table', { 'is-destination-table': isPicker }]">
+        <colgroup v-if="isPicker">
+          <col>
+          <col class="time-column">
+        </colgroup>
+        <colgroup v-else>
+          <col class="check-column">
+          <col>
+          <col class="type-column">
+          <col class="size-column">
+          <col class="time-column">
+        </colgroup>
         <thead>
           <tr v-if="isPicker">
             <th><button @click="changeSort('name')">目录名称 <span>{{ sortMark('name') }}</span></button></th>

@@ -36,7 +36,8 @@ describe('global UI standards', () => {
   it('keeps dense workbench content inside a phone viewport', () => {
     expect(mobileStyles).toMatch(/\.station-actions \{[^}]*flex-wrap: wrap/)
     expect(mobileStyles).toMatch(/\.station-table \{[^}]*min-width: 0/)
-    expect(mobileStyles).toMatch(/\.station-table \.type-column, \.station-table \.time-column \{[^}]*display: none/)
+    expect(mobileStyles).toMatch(/\.station-table \.type-column, \.station-table \.time-column \{[^}]*width: 0[^}]*overflow: hidden[^}]*visibility: hidden/)
+    expect(mobileStyles).not.toMatch(/\.station-table \.type-column, \.station-table \.time-column \{[^}]*display: none/)
     expect(mobileStyles).not.toContain('min-width: 560px')
   })
 
