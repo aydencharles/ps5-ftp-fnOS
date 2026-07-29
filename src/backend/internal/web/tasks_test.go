@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
+	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/extractqueue"
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/library"
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/queue"
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/store"
@@ -25,7 +26,7 @@ func TestDeleteTaskEndpointOnlyDeletesHistory(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	l := library.NewStatic(s, nil)
-	handler := New(s, l, queue.New(s, l), dir).Handler()
+	handler := New(s, l, queue.New(s, l), extractqueue.New(s, l), dir).Handler()
 	ctx := context.Background()
 	profile, _ := s.SaveProfile(ctx, domain.Profile{Name: "PS5", Host: "127.0.0.1", Port: 2121, BasePath: "/"})
 	task, _ := s.CreateTask(ctx, domain.Task{ProfileID: profile.ID, Sources: []domain.SourceLocator{{RootID: "root", Path: "game"}}, Destination: "/data"})
@@ -57,7 +58,7 @@ func TestCreateDownloadTaskUsesLibraryLocatorAsDestination(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	l := library.NewStatic(s, []domain.LibraryRoot{{ID: "root", Path: dir, Label: "Root"}})
-	handler := New(s, l, queue.New(s, l), dir).Handler()
+	handler := New(s, l, queue.New(s, l), extractqueue.New(s, l), dir).Handler()
 	profile, err := s.SaveProfile(context.Background(), domain.Profile{Name: "PS5", Host: "127.0.0.1", Port: 2121, BasePath: "/"})
 	if err != nil {
 		t.Fatal(err)

@@ -70,6 +70,7 @@
 
 - **双向文件传输** — 支持 fnOS → PS5 上传，以及 PS5 → fnOS Library Root 下载
 - **友好的本地浏览器** — 以存储位置展示 fnOS 文件，隐藏 `/vol2/1000/...` 一类内部路径
+- **独立 7z 解压** — 支持在 fnOS 上解压普通 `.7z` 与 `.7z.001` 分卷，包含密码、安全原子发布、进度、取消和重试
 - **游戏内容识别** — 识别含 `eboot.bin` 的目录及 `.exfat`、`.ffpfs`、`.ffpfsc`、`.phu` 镜像，同时允许选择任意文件和目录
 - **持久化任务队列** — 基于 SQLite，支持取消、重试、删除历史记录、真实字节进度、平滑速度与 ETA
 - **可控并发** — 每台 PS5 同时运行一个任务，不同 Profile 可并行，单任务支持 1–4 路文件连接
@@ -124,6 +125,15 @@ FTP 使用明文被动模式。旧版 PS5 固件写入内部 `/data` 时可能�
 5. 如需反向复制，在 **PS5 文件** 中选择内容，点击 **下载**，再选择 fnOS 目标位置。
 
 排队或运行中的任务均可取消；终态任务可以重试或删除历史记录。删除任务记录不会删除已经传输的实际文件。
+
+### 在飞牛上解压 7z
+
+1. 在 **新建传输** 中单选普通 `.7z`，或分卷压缩包的首卷 `.7z.001`；`.002` 等后续卷会自动发现，不能单独作为解压来源。
+2. 点击 **解压**，选择飞牛目标父目录；压缩包有密码时输入密码。
+3. 可选开启“解压成功后删除源分卷”。该选项默认关闭，并且只会在目标目录成功发布后执行。
+4. 在 **任务 → 解压任务** 或悬浮任务中心的解压分类中查看独立队列。
+
+每个任务会创建一个与压缩包同名的新目录。写入前会完整扫描归档，并拒绝绝对路径、路径穿越、重复目标、符号链接和特殊文件。内容先写入隐藏临时目录，再以不合并、不覆盖的方式原子发布；归档内部目录结构会原样保留。解压队列同时只执行一个任务，但不会占用 PS5 传输队列的调度槽。
 
 ### 冲突策略
 
@@ -233,6 +243,11 @@ pnpm --dir src/frontend build
 | `POST` | `/api/v1/tasks/{id}/cancel` | 取消任务 |
 | `POST` | `/api/v1/tasks/{id}/retry` | 重试终态任务 |
 | `GET` | `/api/v1/events` | SSE 任务快照流 |
+| `GET/POST` | `/api/v1/extraction-tasks` | 查询或创建独立 7z 解压任务 |
+| `GET/DELETE` | `/api/v1/extraction-tasks/{id}` | 查询解压任务或删除其终态记录 |
+| `POST` | `/api/v1/extraction-tasks/{id}/cancel` | 取消排队、扫描或解压中的任务 |
+| `POST` | `/api/v1/extraction-tasks/{id}/retry` | 使用新密码重试终态解压任务 |
+| `GET` | `/api/v1/extraction-events` | SSE 解压任务快照流 |
 | `GET/PUT` | `/api/v1/settings` | 查询或更新传输并发数 |
 
 Library API 只接受 `{root_id, path}` 定位信息，不接受客户端提供的 fnOS 绝对路径。后端会解析符号链接并拒绝越过 Library Root 的路径；PS5 端操作同样受每个 Profile 的基础目录约束。
@@ -257,7 +272,7 @@ Library API 只接受 `{root_id, path}` 定位信息，不接受客户端提供�
 ```text
 .
 ├── src/
-│   ├── backend/             Go HTTP API、FTP Adapter、SQLite 与任务队列
+│   ├── backend/             Go HTTP API、FTP/7z 服务、SQLite 与独立任务队列
 │   └── frontend/            Vue 3 / TypeScript / TDesign 前端
 ├── packaging/               fnpack 元数据、权限、UI 配置与生命周期脚本
 ├── scripts/                 开发、生命周期测试与一键构建脚本
@@ -294,6 +309,7 @@ Library API 只接受 `{root_id, path}` 定位信息，不接受客户端提供�
 本项目基于开源组件与飞牛 fnOS 第三方应用框架构建。
 
 - [jlaffaye/ftp](https://github.com/jlaffaye/ftp) — FTP 客户端与传输能力
+- [bodgit/sevenzip](https://github.com/bodgit/sevenzip) — 纯 Go 7z 与分卷读取能力
 - [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) — 纯 Go 的持久化任务与 Profile 存储
 - [Vue](https://vuejs.org/)、[TDesign Vue Next](https://github.com/Tencent/tdesign-vue-next) 与 [Lucide](https://lucide.dev/) — Web UI
 - 飞牛 **fnOS** 第三方应用框架

@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  ArchiveRestore,
   Download,
   Eye,
   EyeOff,
@@ -27,7 +28,7 @@ import PlayStationIcon from './PlayStationIcon.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
 import { usePS5FilesStore } from '../stores/ps5Files'
-import { useTasksStore } from '../stores/tasks'
+import { useTaskCenterStore } from '../stores/taskCenter'
 import { DesktopFileSelectionController } from '../file-browser/selection'
 import type { Entry, SourceLocator } from '../types'
 import type { FileSelectionSnapshot, IFileSelectionController, SelectionModifiers } from '../file-browser/selection'
@@ -55,11 +56,12 @@ const emit = defineEmits<{
   'choose-local-path': [locator: SourceLocator]
   'copy-to-ps5': []
   'copy-to-fnos': [entries: Entry[]]
+  'extract-archive': [entry: Entry]
 }>()
 const library = useLibraryStore()
 const profiles = useProfilesStore()
 const files = usePS5FilesStore()
-const tasks = useTasksStore()
+const taskCenter = useTaskCenterStore()
 const selectionController: IFileSelectionController = new DesktopFileSelectionController()
 const selection = shallowRef<FileSelectionSnapshot>(selectionController.snapshot)
 const history = ref<string[]>([])
@@ -102,6 +104,10 @@ const selectedEntries = computed(() => {
 const selectionCount = computed(() => isPicker.value ? 0 : selectedEntries.value.length)
 const selectedSize = computed(() => selectedEntries.value.reduce((total, entry) => total + (entry.is_dir ? 0 : entry.size), 0))
 const singleSelection = computed(() => selectedEntries.value.length === 1 ? selectedEntries.value[0] : null)
+const extractableArchive = computed(() => {
+  const entry = singleSelection.value
+  return entry && !entry.is_dir && /\.7z(?:\.001)?$/i.test(entry.name) ? entry : null
+})
 const canDelete = computed(() => selectedEntries.value.length === 1 || (selectedEntries.value.length > 1 && selectedEntries.value.every((entry) => !entry.is_dir)))
 const atBase = computed(() => currentPath.value === basePath.value)
 const canBack = computed(() => historyIndex.value > 0)
@@ -468,7 +474,7 @@ async function applyDirectoryDelete() {
     deleteVisible.value = false
     clearSelection()
     if (result.task) {
-      tasks.openCenter()
+      taskCenter.open('transfer', 'active')
       await MessagePlugin.warning('递归删除已加入任务中心')
     }
   } catch (error) {
@@ -522,6 +528,13 @@ function copyToFnOS() {
   const entries = [...selectedEntries.value]
   closeContextMenu()
   emit('copy-to-fnos', entries)
+}
+
+function extractArchive() {
+  if (!extractableArchive.value) return
+  const entry = extractableArchive.value
+  closeContextMenu()
+  emit('extract-archive', entry)
 }
 
 function openSelection() {
@@ -667,6 +680,7 @@ onBeforeUnmount(() => {
       <template v-if="isSource && !isLocalPicker">
         <t-button variant="text" size="small" @click="toggleHidden"><component :is="library.hidden ? EyeOff : Eye" :size="15" />{{ library.hidden ? '隐藏文件已显示' : '显示隐藏文件' }}</t-button>
         <t-button v-if="selectionCount" variant="text" size="small" @click="clearSelection"><X :size="15" />清空选择</t-button>
+        <t-button variant="text" size="small" :disabled="!extractableArchive" @click="extractArchive"><ArchiveRestore :size="15" />解压</t-button>
         <t-button theme="primary" size="small" :disabled="!selectionCount" @click="copyToPS5"><Send :size="15" />复制到 PS5</t-button>
         <span class="selection-note">已选择 {{ selectionCount }} 项</span>
       </template>
@@ -741,6 +755,7 @@ onBeforeUnmount(() => {
     <div v-if="contextMenu.visible" ref="contextMenuElement" class="file-context-menu" role="menu" :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }" @click.stop @contextmenu.prevent @keydown.esc.stop="closeContextMenu()">
       <button role="menuitem" :disabled="!singleSelection" @click="openSelection"><FolderOpen :size="15" />打开</button>
       <template v-if="isSource">
+        <button role="menuitem" :disabled="!extractableArchive" @click="extractArchive"><ArchiveRestore :size="15" />解压到飞牛</button>
         <button role="menuitem" :disabled="!selectionCount" @click="copyToPS5"><Send :size="15" />复制到 PS5</button>
       </template>
       <template v-else>

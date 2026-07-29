@@ -118,7 +118,24 @@ CREATE TABLE IF NOT EXISTS task_events(
 );
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 INSERT OR IGNORE INTO settings(key,value) VALUES('transfer_workers','2');`
-	_, err := s.db.Exec(schema)
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+	const extractionSchema = `
+CREATE TABLE IF NOT EXISTS extraction_tasks(
+ id TEXT PRIMARY KEY,
+ source_root_id TEXT NOT NULL, source_path TEXT NOT NULL,
+ destination_root_id TEXT NOT NULL, destination_parent TEXT NOT NULL, destination_path TEXT NOT NULL,
+ delete_sources INTEGER NOT NULL DEFAULT 0, password_cipher TEXT NOT NULL DEFAULT '',
+ state TEXT NOT NULL, total_bytes INTEGER NOT NULL DEFAULT 0, extracted_bytes INTEGER NOT NULL DEFAULT 0,
+ speed_bytes REAL NOT NULL DEFAULT 0, eta_seconds INTEGER, current_file TEXT NOT NULL DEFAULT '',
+ total_items INTEGER NOT NULL DEFAULT 0, completed_items INTEGER NOT NULL DEFAULT 0,
+ error TEXT NOT NULL DEFAULT '', warning TEXT NOT NULL DEFAULT '', retry_of TEXT NOT NULL DEFAULT '',
+ created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_extraction_tasks_state_created ON extraction_tasks(state,created_at);
+UPDATE schema_version SET version=2 WHERE version<2;`
+	_, err := s.db.Exec(extractionSchema)
 	return err
 }
 

@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/extractqueue"
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/library"
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/queue"
 	appRuntime "github.com/chenpy/ps5-ftp-fnos/src/backend/internal/runtime"
@@ -34,10 +35,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	interruptedExtractions, err := s.InterruptExtractions(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
 	tasks := queue.New(s, lib)
 	tasks.Start()
 	defer tasks.Close()
-	handler := web.New(s, lib, tasks, cfg.UIDir)
+	extractions := extractqueue.New(s, lib)
+	extractions.CleanupInterrupted(interruptedExtractions)
+	extractions.Start()
+	defer extractions.Close()
+	handler := web.New(s, lib, tasks, extractions, cfg.UIDir)
 	server := &http.Server{Addr: cfg.Listen + ":" + cfg.Port, Handler: handler.Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second}
 	errs := make(chan error, 1)
 	go func() { log.Printf("PS5 FTP Manager listening on %s", server.Addr); errs <- server.ListenAndServe() }()

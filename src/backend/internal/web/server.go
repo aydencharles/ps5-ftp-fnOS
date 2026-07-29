@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
+	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/extractqueue"
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/ftpclient"
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/library"
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/queue"
@@ -26,12 +27,13 @@ type Server struct {
 	store   *store.Store
 	library *library.Library
 	queue   *queue.Manager
+	extract *extractqueue.Manager
 	uiDir   string
 	mux     *http.ServeMux
 }
 
-func New(s *store.Store, l *library.Library, q *queue.Manager, uiDir string) *Server {
-	v := &Server{store: s, library: l, queue: q, uiDir: uiDir, mux: http.NewServeMux()}
+func New(s *store.Store, l *library.Library, q *queue.Manager, extract *extractqueue.Manager, uiDir string) *Server {
+	v := &Server{store: s, library: l, queue: q, extract: extract, uiDir: uiDir, mux: http.NewServeMux()}
 	v.routes()
 	return v
 }
@@ -56,6 +58,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/tasks/{id}/cancel", s.cancelTask)
 	s.mux.HandleFunc("POST /api/v1/tasks/{id}/retry", s.retryTask)
 	s.mux.HandleFunc("GET /api/v1/events", s.events)
+	s.mux.HandleFunc("GET /api/v1/extraction-tasks", s.listExtractionTasks)
+	s.mux.HandleFunc("POST /api/v1/extraction-tasks", s.createExtractionTask)
+	s.mux.HandleFunc("GET /api/v1/extraction-tasks/{id}", s.getExtractionTask)
+	s.mux.HandleFunc("DELETE /api/v1/extraction-tasks/{id}", s.deleteExtractionTask)
+	s.mux.HandleFunc("POST /api/v1/extraction-tasks/{id}/cancel", s.cancelExtractionTask)
+	s.mux.HandleFunc("POST /api/v1/extraction-tasks/{id}/retry", s.retryExtractionTask)
+	s.mux.HandleFunc("GET /api/v1/extraction-events", s.extractionEvents)
 	s.mux.HandleFunc("GET /api/v1/settings", s.settings)
 	s.mux.HandleFunc("PUT /api/v1/settings", s.updateSettings)
 	s.mux.Handle("/", spaHandler(s.uiDir))
@@ -102,7 +111,8 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tasks, _ := s.store.Tasks(r.Context())
-	jsonResponse(w, 200, map[string]any{"ok": true, "name": "PS5 FTP Manager", "version": "0.2.0", "profiles": profiles, "library_roots": s.library.Roots(), "tasks": tasks, "settings": map[string]any{"transfer_workers": s.store.Workers(r.Context())}})
+	extractions, _ := s.store.ExtractionTasks(r.Context())
+	jsonResponse(w, 200, map[string]any{"ok": true, "name": "PS5 FTP Manager", "version": "0.2.0", "profiles": profiles, "library_roots": s.library.Roots(), "tasks": tasks, "extraction_tasks": extractions, "settings": map[string]any{"transfer_workers": s.store.Workers(r.Context())}})
 }
 func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 	v, err := s.store.Profiles(r.Context())

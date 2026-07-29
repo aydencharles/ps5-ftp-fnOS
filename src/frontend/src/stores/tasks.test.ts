@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTasksStore } from './tasks'
+import { useTaskCenterStore } from './taskCenter'
 
 describe('tasks store', () => {
   beforeEach(() => { setActivePinia(createPinia()); vi.stubGlobal('fetch', vi.fn()) })
@@ -10,16 +11,17 @@ describe('tasks store', () => {
   })
 
   it('opens the task center on the requested tab', () => {
-    const store = useTasksStore()
-    store.openCenter('history')
-    expect(store.centerVisible).toBe(true)
-    expect(store.centerTab).toBe('history')
-    store.closeCenter()
-    expect(store.centerVisible).toBe(false)
+    const store = useTaskCenterStore()
+    store.open('extraction', 'history')
+    expect(store.visible).toBe(true)
+    expect(store.category).toBe('extraction')
+    expect(store.statusTab).toBe('history')
+    store.close()
+    expect(store.visible).toBe(false)
   })
 
   it('keeps a normalized launcher position in Pinia', () => {
-    const store = useTasksStore()
+    const store = useTaskCenterStore()
     store.setLauncherPosition({ edge: 'left', ratio: 1.5 })
     expect(store.launcherPosition).toEqual({ edge: 'left', ratio: 1 })
   })

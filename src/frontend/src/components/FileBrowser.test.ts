@@ -291,6 +291,33 @@ describe('File Browser', () => {
     expect(latestSources(wrapper)).toEqual([])
   })
 
+  it('offers extraction only for a .7z archive or its first split volume', async () => {
+    const wrapper = mountSource()
+    await flushPromises()
+    const library = useLibraryStore()
+    library.entries = [
+      { name: 'single.7z', path: '1000/single.7z', is_dir: false, size: 1 },
+      { name: 'split.7z.001', path: '1000/split.7z.001', is_dir: false, size: 1 },
+      { name: 'split.7z.002', path: '1000/split.7z.002', is_dir: false, size: 1 },
+    ]
+    await flushPromises()
+    const extractionButton = () => wrapper.findAll('.station-actions button').find((button) => button.text().includes('解压'))!
+
+    await wrapper.get('tr[data-entry-path="1000/single.7z"]').trigger('click')
+    await extractionButton().trigger('click')
+    expect(wrapper.emitted('extract-archive')?.at(-1)?.[0]).toEqual(library.entries[0])
+
+    await wrapper.get('tr[data-entry-path="1000/split.7z.001"]').trigger('click')
+    await extractionButton().trigger('click')
+    expect(wrapper.emitted('extract-archive')?.at(-1)?.[0]).toEqual(library.entries[1])
+
+    const emitted = wrapper.emitted('extract-archive')?.length
+    await wrapper.get('tr[data-entry-path="1000/split.7z.002"]').trigger('click')
+    expect(extractionButton().attributes('disabled')).toBeDefined()
+    await extractionButton().trigger('click')
+    expect(wrapper.emitted('extract-archive')?.length).toBe(emitted)
+  })
+
   it('selects a picker target on one click and navigates only on double click', async () => {
     const wrapper = mountDestination()
     await flushPromises()

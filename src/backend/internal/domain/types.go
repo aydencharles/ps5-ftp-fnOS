@@ -37,6 +37,29 @@ type SourceLocator struct {
 	Path   string `json:"path"`
 }
 
+type ExtractionTask struct {
+	ID                string        `json:"id"`
+	Source            SourceLocator `json:"source"`
+	DestinationParent SourceLocator `json:"destination_parent"`
+	Destination       SourceLocator `json:"destination"`
+	DeleteSources     bool          `json:"delete_sources"`
+	Password          string        `json:"-"`
+	State             string        `json:"state"`
+	TotalBytes        int64         `json:"total_bytes"`
+	ExtractedBytes    int64         `json:"extracted_bytes"`
+	SpeedBytes        float64       `json:"speed_bytes"`
+	ETASeconds        *int64        `json:"eta_seconds"`
+	CurrentFile       string        `json:"current_file,omitempty"`
+	TotalItems        int           `json:"total_items"`
+	CompletedItems    int           `json:"completed_items"`
+	Error             string        `json:"error,omitempty"`
+	Warning           string        `json:"warning,omitempty"`
+	RetryOf           string        `json:"retry_of,omitempty"`
+	CreatedAt         time.Time     `json:"created_at"`
+	StartedAt         *time.Time    `json:"started_at,omitempty"`
+	FinishedAt        *time.Time    `json:"finished_at,omitempty"`
+}
+
 type Task struct {
 	ID               string          `json:"id"`
 	Type             string          `json:"type"`
@@ -85,6 +108,22 @@ const (
 	TaskCanceled    = "canceled"
 	TaskInterrupted = "interrupted"
 )
+
+const (
+	ExtractionQueued      = "queued"
+	ExtractionScanning    = "scanning"
+	ExtractionExtracting  = "extracting"
+	ExtractionCleaning    = "cleaning"
+	ExtractionCanceling   = "canceling"
+	ExtractionSucceeded   = "succeeded"
+	ExtractionFailed      = "failed"
+	ExtractionCanceled    = "canceled"
+	ExtractionInterrupted = "interrupted"
+)
+
+func ExtractionTerminal(state string) bool {
+	return state == ExtractionSucceeded || state == ExtractionFailed || state == ExtractionCanceled || state == ExtractionInterrupted
+}
 
 func ValidConflictPolicy(v string) bool {
 	return v == "smart" || v == "overwrite" || v == "fail"
