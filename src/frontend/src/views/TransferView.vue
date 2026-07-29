@@ -79,7 +79,7 @@ async function submit() {
   <t-dialog v-model:visible="destinationPickerVisible" dialog-class-name="transfer-picker-dialog" header="选择 PS5 目标位置" width="960px" :confirm-btn="{ content: profiles.selectedId ? '下一步' : '请选择 PS5', disabled: !profiles.selectedId }" @confirm="confirmDestination">
     <section class="transfer-destination-picker">
       <header>
-        <div><strong>PS5 目的地</strong><small>当前浏览目录就是目标位置；文件管理操作已禁用。</small></div>
+        <div><strong>PS5 目的地</strong><small>此处浏览的位置就是接收文件的位置</small></div>
         <t-select v-model="profiles.selectedId" :options="profiles.items.map(profile => ({ label: profile.name, value: profile.id }))" placeholder="选择 PS5" class="location-select" />
       </header>
       <FileBrowser v-model="destination" mode="destination" compact />
@@ -99,10 +99,10 @@ async function submit() {
       </dl>
       <div class="confirm-policy">
         <header><strong>同名文件处理</strong><span>{{ conflictLabel }}</span></header>
-        <t-radio-group v-model="conflict" class="policy-options">
-          <t-radio value="smart"><span class="policy-copy"><strong>智能处理</strong><small>尺寸相同则跳过，不同则安全替换</small></span></t-radio>
-          <t-radio value="overwrite"><span class="policy-copy"><strong>全部覆盖</strong><small>所有同名文件都重新上传</small></span></t-radio>
-          <t-radio value="fail"><span class="policy-copy"><strong>停止任务</strong><small>发现任意同名目标即停止</small></span></t-radio>
+        <t-radio-group v-model="conflict">
+          <t-radio value="smart">智能处理</t-radio>
+          <t-radio value="overwrite">全部覆盖</t-radio>
+          <t-radio value="fail">停止任务</t-radio>
         </t-radio-group>
       </div>
     </div>
