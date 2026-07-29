@@ -17,7 +17,7 @@ const tasks = useTasksStore()
 
 const pageInfo = computed(() => {
   const descriptions: Record<string, string> = {
-    '/': '从 fnOS 选择游戏内容并发送到指定 PS5 目录',
+    '/': '从飞牛存储选择文件发送到 PS5',
     '/tasks': '查看传输状态、实时速度和历史结果',
     '/files': '浏览并管理 PS5 上的文件和目录',
     '/settings': '管理 PS5 连接与传输并发',
@@ -44,10 +44,10 @@ onBeforeUnmount(() => tasks.stream?.close())
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <div class="brand">
+      <router-link class="brand" to="/" aria-label="返回首页">
         <img class="brand-logo" :src="logoUrl" alt="">
         <span class="brand-name">PS5 FTP Manager</span>
-      </div>
+      </router-link>
       <nav class="main-nav" aria-label="主导航">
         <router-link to="/"><Send :size="15" />传输</router-link>
         <router-link to="/files"><FolderOpen :size="15" />PS5 文件</router-link>
