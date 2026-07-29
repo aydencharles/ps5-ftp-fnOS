@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { FolderOpen, Send, Settings } from '@lucide/vue'
+import { Settings } from '@lucide/vue'
 import logoUrl from '../../../assets/logo.png'
+import FnOSIcon from './components/FnOSIcon.vue'
+import PlayStationIcon from './components/PlayStationIcon.vue'
 import TaskCenter from './components/TaskCenter.vue'
 import { useSystemStore } from './stores/system'
 import { useProfilesStore } from './stores/profiles'
@@ -49,8 +51,8 @@ onBeforeUnmount(() => tasks.stream?.close())
         <span class="brand-name">PS5 FTP Manager</span>
       </router-link>
       <nav class="main-nav" aria-label="主导航">
-        <router-link to="/"><Send :size="15" />传输</router-link>
-        <router-link to="/files"><FolderOpen :size="15" />PS5 文件</router-link>
+        <router-link to="/"><FnOSIcon :size="16" />飞牛传输</router-link>
+        <router-link to="/files"><PlayStationIcon :size="16" />PS5 文件</router-link>
         <router-link to="/settings"><Settings :size="15" />设置</router-link>
       </nav>
       <div class="app-state">
