@@ -9,6 +9,21 @@ describe('tasks store', () => {
     expect(store.items[0]?.state).toBe('queued')
   })
 
+  it('opens the task center on the requested tab', () => {
+    const store = useTasksStore()
+    store.openCenter('history')
+    expect(store.centerVisible).toBe(true)
+    expect(store.centerTab).toBe('history')
+    store.closeCenter()
+    expect(store.centerVisible).toBe(false)
+  })
+
+  it('keeps a normalized launcher position in Pinia', () => {
+    const store = useTasksStore()
+    store.setLauncherPosition({ edge: 'left', ratio: 1.5 })
+    expect(store.launcherPosition).toEqual({ edge: 'left', ratio: 1 })
+  })
+
   it('deletes a history record and refreshes the authoritative snapshot', async () => {
     const fetch = vi.mocked(globalThis.fetch)
     fetch

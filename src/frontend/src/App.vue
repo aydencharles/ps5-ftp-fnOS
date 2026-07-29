@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { FolderOpen, ListTodo, Send, Settings } from '@lucide/vue'
+import { FolderOpen, Send, Settings } from '@lucide/vue'
 import logoUrl from '../../../assets/logo.png'
+import TaskCenter from './components/TaskCenter.vue'
 import { useSystemStore } from './stores/system'
 import { useProfilesStore } from './stores/profiles'
 import { useLibraryStore } from './stores/library'
@@ -26,8 +27,6 @@ const pageInfo = computed(() => {
     description: descriptions[route.path] || '',
   }
 })
-const activeCount = computed(() => tasks.items.filter((task) => ['queued', 'scanning', 'running', 'canceling'].includes(task.state)).length)
-
 onMounted(async () => {
   try {
     const data = await system.bootstrap()
@@ -51,11 +50,6 @@ onBeforeUnmount(() => tasks.stream?.close())
       </div>
       <nav class="main-nav" aria-label="主导航">
         <router-link to="/"><Send :size="15" />传输</router-link>
-        <router-link to="/tasks">
-          <ListTodo :size="15" />
-          任务
-          <span v-if="activeCount" class="nav-count">{{ activeCount }}</span>
-        </router-link>
         <router-link to="/files"><FolderOpen :size="15" />PS5 文件</router-link>
         <router-link to="/settings"><Settings :size="15" />设置</router-link>
       </nav>
@@ -76,5 +70,6 @@ onBeforeUnmount(() => tasks.stream?.close())
       <t-alert v-if="system.error" theme="error" :message="system.error" />
       <router-view v-else />
     </main>
+    <TaskCenter />
   </div>
 </template>

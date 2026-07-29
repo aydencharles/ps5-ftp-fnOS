@@ -7,6 +7,7 @@ import FileBrowser from '../components/FileBrowser.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
 import { useTasksStore } from '../stores/tasks'
+import type { SourceLocator } from '../types'
 
 const library = useLibraryStore()
 const profiles = useProfilesStore()
@@ -18,15 +19,16 @@ const destinationPickerVisible = ref(false)
 const confirmVisible = ref(false)
 const submitting = ref(false)
 const conflict = ref<ConflictPolicy>('smart')
+const selectedSources = ref<SourceLocator[]>([])
 
 const currentRootLabel = computed(() => library.roots.find((root) => root.id === library.rootId)?.label || 'fnOS')
-const selectedEntries = computed(() => library.selected.map((locator) => library.entries.find((entry) => entry.path === locator.path)).filter(Boolean))
+const selectedEntries = computed(() => selectedSources.value.map((locator) => library.entries.find((entry) => entry.path === locator.path)).filter(Boolean))
 const selectedSize = computed(() => selectedEntries.value.reduce((sum, entry) => sum + (entry?.is_dir ? 0 : entry?.size || 0), 0))
 const selectedLabel = computed(() => {
-  const first = library.selected[0]
+  const first = selectedSources.value[0]
   if (!first) return ''
   const name = first.path.split('/').filter(Boolean).pop() || currentRootLabel.value
-  return library.selected.length === 1 ? name : `${name} 等 ${library.selected.length} 项`
+  return selectedSources.value.length === 1 ? name : `${name} 等 ${selectedSources.value.length} 项`
 })
 const profileLabel = computed(() => profiles.selected?.name || '尚未选择 PS5')
 const conflictLabel = computed(() => ({ smart: '智能处理同名文件', overwrite: '全部重新上传', fail: '遇到同名文件停止' })[conflict.value])
@@ -36,7 +38,7 @@ watch(() => profiles.selectedId, () => {
 }, { immediate: true })
 
 function openCopyToPS5() {
-  if (!library.selected.length) return
+  if (!selectedSources.value.length) return
   destination.value = profiles.selected?.base_path || '/'
   destinationPickerVisible.value = true
 }
@@ -48,11 +50,11 @@ function confirmDestination() {
 }
 
 async function submit() {
-  if (!profiles.selectedId || !library.selected.length) return
+  if (!profiles.selectedId || !selectedSources.value.length) return
   submitting.value = true
   try {
-    const task = await tasks.create(profiles.selectedId, library.selected, destination.value, conflict.value)
-    library.selected = []
+    const task = await tasks.create(profiles.selectedId, selectedSources.value, destination.value, conflict.value)
+    selectedSources.value = []
     confirmVisible.value = false
     await MessagePlugin.success(`任务 ${task.id.slice(0, 8)} 已加入队列`)
   } catch (error) {
@@ -65,10 +67,10 @@ async function submit() {
   <section class="transfer-workbench transfer-workbench-single">
     <div class="browser-pane unified-browser-pane">
       <header class="pane-header">
-        <div><span class="pane-icon"><HardDrive :size="17" /></span><div><h2>fnOS 来源</h2><p>双击目录进入，勾选要传输的内容</p></div></div>
+        <div><span class="pane-icon"><HardDrive :size="17" /></span><div><h2>飞牛存储</h2><p>双击目录进入，勾选要传输的内容</p></div></div>
         <t-select v-model="library.rootId" :options="library.storageRoots.map(root => ({ label: root.label, value: root.id }))" placeholder="选择存储空间" class="location-select" />
       </header>
-      <FileBrowser mode="source" compact @copy-to-ps5="openCopyToPS5" />
+      <FileBrowser v-model:selected-sources="selectedSources" mode="source" compact @copy-to-ps5="openCopyToPS5" />
     </div>
   </section>
 
@@ -90,7 +92,7 @@ async function submit() {
         <div><span class="confirm-route-icon"><Gamepad2 :size="18" /></span><small>目的地</small><strong>{{ profileLabel }} · {{ destination }}</strong></div>
       </div>
       <dl class="confirm-facts">
-        <div><dt>已选内容</dt><dd>{{ library.selected.length }} 项</dd></div>
+        <div><dt>已选内容</dt><dd>{{ selectedSources.length }} 项</dd></div>
         <div><dt>当前可统计大小</dt><dd>{{ selectedSize ? formatBytes(selectedSize) : '扫描任务后确定' }}</dd></div>
       </dl>
       <div class="confirm-policy">

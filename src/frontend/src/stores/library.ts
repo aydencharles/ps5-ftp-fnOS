@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
-import type { Entry, LibraryRoot, SourceLocator } from '../types'
+import type { Entry, LibraryRoot } from '../types'
 
 export const useLibraryStore = defineStore('library', {
-  state: () => ({ roots: [] as LibraryRoot[], rootId: '', path: '', entries: [] as Entry[], selected: [] as SourceLocator[], query: '', hidden: false, loading: false, error: '', requestId: 0 }),
+  state: () => ({ roots: [] as LibraryRoot[], rootId: '', path: '', entries: [] as Entry[], query: '', hidden: false, loading: false, error: '', requestId: 0 }),
   getters: {
     storageRoots: (state) => state.roots.filter((root) => root.kind === 'volume'),
   },
@@ -35,21 +35,5 @@ export const useLibraryStore = defineStore('library', {
         if (requestId === this.requestId) this.loading = false
       }
     },
-    toggle(entry: Entry) {
-      const locator = { root_id: this.rootId, path: entry.path.replace(/^\/+|\/+$/g, '') }
-      const index = this.selected.findIndex((v) => v.root_id === locator.root_id && v.path === locator.path)
-      if (index >= 0) {
-        this.selected.splice(index, 1)
-        return
-      }
-      this.selected = this.selected.filter((value) => {
-        if (value.root_id !== locator.root_id) return true
-        const valueIsAncestor = locator.path.startsWith(`${value.path}/`)
-        const valueIsDescendant = value.path.startsWith(`${locator.path}/`)
-        return !valueIsAncestor && !valueIsDescendant
-      })
-      this.selected.push(locator)
-    },
-    isSelected(entry: Entry) { return this.selected.some((v) => v.root_id === this.rootId && v.path === entry.path) },
   },
 })
