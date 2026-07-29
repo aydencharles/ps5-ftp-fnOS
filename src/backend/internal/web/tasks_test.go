@@ -63,12 +63,10 @@ func TestCreateDownloadTaskUsesLibraryLocatorAsDestination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, _ := json.Marshal(domain.Task{
-		Type:           "download",
-		ProfileID:      profile.ID,
-		Sources:        []domain.SourceLocator{{RootID: "root", Path: "/data/game.exfat"}},
-		Destination:    "downloads/new-library",
-		ConflictPolicy: "smart",
+	body, _ := json.Marshal(map[string]any{
+		"type": "download", "profile_id": profile.ID,
+		"sources":     []domain.SourceLocator{{RootID: "root", Path: "/data/game.exfat"}},
+		"destination": "downloads/new-library", "conflict_policy": "smart",
 	})
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/tasks", bytes.NewReader(body))

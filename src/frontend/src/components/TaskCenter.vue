@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Ban, CircleCheck, Clock3, Eye, History, Info, ListTodo, RotateCcw, Trash2, X } from '@lucide/vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
+import type { FormInstanceFunctions, FormRules } from 'tdesign-vue-next'
 import { formatBytes, formatETA } from '../api'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
@@ -9,6 +10,7 @@ import { useTasksStore } from '../stores/tasks'
 import { useExtractionTasksStore } from '../stores/extractions'
 import { useTaskCenterStore } from '../stores/taskCenter'
 import type { ExtractionTask, Task, TaskEvent, TaskItem } from '../types'
+import { optionalPasswordRules } from '../formValidation'
 
 type TaskTab = 'active' | 'history'
 
@@ -29,6 +31,9 @@ const extractionDetail = ref<ExtractionTask | null>(null)
 const retryExtractionTask = ref<ExtractionTask | null>(null)
 const retryPassword = ref('')
 const retryVisible = ref(false)
+const retryForm = ref<FormInstanceFunctions>()
+const retryFormData = computed(() => ({ password: retryPassword.value }))
+const retryRules: FormRules = { password: optionalPasswordRules }
 const panelElement = ref<{ offsetWidth: number; offsetHeight: number } | null>(null)
 const launcherSize = 52
 const launcherMargin = 16
@@ -324,6 +329,7 @@ function openExtractionRetry(task: ExtractionTask) {
 
 async function submitExtractionRetry() {
   if (!retryExtractionTask.value) return
+  if (await retryForm.value?.validate() !== true) return
   try {
     await extractions.retry(retryExtractionTask.value.id, retryPassword.value)
     retryPassword.value = ''
@@ -503,6 +509,6 @@ onBeforeUnmount(() => {
   </t-dialog>
 
   <t-dialog v-model:visible="retryVisible" header="重新提交解压任务" :confirm-btn="{ content: '重新提交' }" @confirm="submitExtractionRetry" @close="retryPassword = ''">
-    <t-form label-align="top"><t-form-item label="压缩包密码（没有密码可留空）"><t-input v-model="retryPassword" type="password" autocomplete="off" /></t-form-item></t-form>
+    <t-form ref="retryForm" :data="retryFormData" :rules="retryRules" required-mark label-align="top"><t-form-item name="password" label="压缩包密码（没有密码可留空）"><t-input v-model="retryPassword" type="password" autocomplete="off" /></t-form-item></t-form>
   </t-dialog>
 </template>

@@ -2,11 +2,12 @@
 import { computed, ref } from 'vue'
 import { ChevronDown } from '@lucide/vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
-import type { DropdownOption } from 'tdesign-vue-next'
+import type { DropdownOption, FormInstanceFunctions, FormRules } from 'tdesign-vue-next'
 import { formatBytes, formatETA } from '../api'
 import { useExtractionTasksStore } from '../stores/extractions'
 import { useLibraryStore } from '../stores/library'
 import type { ExtractionTask } from '../types'
+import { optionalPasswordRules } from '../formValidation'
 
 const extractions = useExtractionTasksStore()
 const library = useLibraryStore()
@@ -15,6 +16,9 @@ const detailTask = ref<ExtractionTask | null>(null)
 const retryVisible = ref(false)
 const retryTask = ref<ExtractionTask | null>(null)
 const retryPassword = ref('')
+const retryForm = ref<FormInstanceFunctions>()
+const retryFormData = computed(() => ({ password: retryPassword.value }))
+const retryRules: FormRules = { password: optionalPasswordRules }
 const activeStates = new Set(['queued', 'scanning', 'extracting', 'cleaning', 'canceling'])
 const activeTasks = computed(() => extractions.items.filter((task) => activeStates.has(task.state)))
 const historyTasks = computed(() => extractions.items.filter((task) => !activeStates.has(task.state)))
@@ -72,6 +76,7 @@ async function cancel(task: ExtractionTask) {
 function openRetry(task: ExtractionTask) { retryTask.value = task; retryPassword.value = ''; retryVisible.value = true }
 async function submitRetry() {
   if (!retryTask.value) return
+  if (await retryForm.value?.validate() !== true) return
   try { await extractions.retry(retryTask.value.id, retryPassword.value); retryPassword.value = ''; retryVisible.value = false; await MessagePlugin.success('解压任务已重新加入队列') }
   catch (error) { await MessagePlugin.error(error instanceof Error ? error.message : String(error)) }
 }
@@ -124,5 +129,7 @@ async function openDetail(task: ExtractionTask) {
   <t-dialog v-model:visible="detailVisible" header="解压任务详情" width="720px" :footer="false">
     <div v-if="detailTask" class="task-detail"><div class="task-detail-route"><span><small>压缩包</small><strong>{{ sourceLabel(detailTask) }}</strong></span><i>→</i><span><small>目标目录</small><strong>{{ destinationLabel(detailTask) }}</strong></span></div><dl class="task-detail-grid"><div><dt>状态</dt><dd>{{ stateLabel[detailTask.state] }}</dd></div><div><dt>当前文件</dt><dd>{{ detailTask.current_file || '—' }}</dd></div><div><dt>完成项目</dt><dd>{{ detailTask.completed_items }} / {{ detailTask.total_items }}</dd></div><div><dt>解压数据</dt><dd>{{ formatBytes(detailTask.extracted_bytes) }} / {{ formatBytes(detailTask.total_bytes) }}</dd></div><div><dt>速度</dt><dd>{{ detailTask.speed_bytes ? `${formatBytes(detailTask.speed_bytes)}/s` : '—' }}</dd></div><div><dt>预计剩余</dt><dd>{{ detailTask.eta_seconds == null ? '—' : formatETA(detailTask.eta_seconds) }}</dd></div><div><dt>删除源分卷</dt><dd>{{ detailTask.delete_sources ? '是' : '否' }}</dd></div><div><dt>创建时间</dt><dd>{{ formatTime(detailTask.created_at) }}</dd></div><div><dt>任务编号</dt><dd class="mono">{{ detailTask.id }}</dd></div></dl><t-alert v-if="detailTask.error" theme="error" :message="detailTask.error" /><t-alert v-if="detailTask.warning" theme="warning" :message="detailTask.warning" /></div>
   </t-dialog>
-  <t-dialog v-model:visible="retryVisible" header="重新提交解压任务" :confirm-btn="{ content: '重新提交' }" @confirm="submitRetry" @close="retryPassword = ''"><t-form label-align="top"><t-form-item label="压缩包密码（没有密码可留空）"><t-input v-model="retryPassword" type="password" autocomplete="off" /></t-form-item></t-form></t-dialog>
+  <t-dialog v-model:visible="retryVisible" header="重新提交解压任务" :confirm-btn="{ content: '重新提交' }" @confirm="submitRetry" @close="retryPassword = ''">
+    <t-form ref="retryForm" :data="retryFormData" :rules="retryRules" required-mark label-align="top"><t-form-item name="password" label="压缩包密码（没有密码可留空）"><t-input v-model="retryPassword" type="password" autocomplete="off" /></t-form-item></t-form>
+  </t-dialog>
 </template>

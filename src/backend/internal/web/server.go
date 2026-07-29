@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-playground/validator/v10"
+
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/extractqueue"
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/ftpclient"
@@ -24,16 +26,17 @@ import (
 )
 
 type Server struct {
-	store   *store.Store
-	library *library.Library
-	queue   *queue.Manager
-	extract *extractqueue.Manager
-	uiDir   string
-	mux     *http.ServeMux
+	store     *store.Store
+	library   *library.Library
+	queue     *queue.Manager
+	extract   *extractqueue.Manager
+	validator *validator.Validate
+	uiDir     string
+	mux       *http.ServeMux
 }
 
 func New(s *store.Store, l *library.Library, q *queue.Manager, extract *extractqueue.Manager, uiDir string) *Server {
-	v := &Server{store: s, library: l, queue: q, extract: extract, uiDir: uiDir, mux: http.NewServeMux()}
+	v := &Server{store: s, library: l, queue: q, extract: extract, validator: newRequestValidator(), uiDir: uiDir, mux: http.NewServeMux()}
 	v.routes()
 	return v
 }
@@ -44,26 +47,26 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/bootstrap", s.bootstrap)
 	s.mux.HandleFunc("GET /api/v1/profiles", s.listProfiles)
 	s.mux.HandleFunc("POST /api/v1/profiles", s.saveProfile)
-	s.mux.HandleFunc("PUT /api/v1/profiles/{id}", s.saveProfile)
-	s.mux.HandleFunc("DELETE /api/v1/profiles/{id}", s.deleteProfile)
-	s.mux.HandleFunc("POST /api/v1/profiles/{id}/test", s.testProfile)
+	s.mux.HandleFunc("PUT /api/v1/profiles/{id}", s.withValidID(s.saveProfile))
+	s.mux.HandleFunc("DELETE /api/v1/profiles/{id}", s.withValidID(s.deleteProfile))
+	s.mux.HandleFunc("POST /api/v1/profiles/{id}/test", s.withValidID(s.testProfile))
 	s.mux.HandleFunc("GET /api/v1/library/roots", s.roots)
 	s.mux.HandleFunc("GET /api/v1/library/entries", s.localEntries)
-	s.mux.HandleFunc("GET /api/v1/ps5/{id}/entries", s.remoteEntries)
-	s.mux.HandleFunc("POST /api/v1/ps5/{id}/operations", s.remoteOperation)
+	s.mux.HandleFunc("GET /api/v1/ps5/{id}/entries", s.withValidID(s.remoteEntries))
+	s.mux.HandleFunc("POST /api/v1/ps5/{id}/operations", s.withValidID(s.remoteOperation))
 	s.mux.HandleFunc("GET /api/v1/tasks", s.listTasks)
 	s.mux.HandleFunc("POST /api/v1/tasks", s.createTask)
-	s.mux.HandleFunc("GET /api/v1/tasks/{id}", s.getTask)
-	s.mux.HandleFunc("DELETE /api/v1/tasks/{id}", s.deleteTask)
-	s.mux.HandleFunc("POST /api/v1/tasks/{id}/cancel", s.cancelTask)
-	s.mux.HandleFunc("POST /api/v1/tasks/{id}/retry", s.retryTask)
+	s.mux.HandleFunc("GET /api/v1/tasks/{id}", s.withValidID(s.getTask))
+	s.mux.HandleFunc("DELETE /api/v1/tasks/{id}", s.withValidID(s.deleteTask))
+	s.mux.HandleFunc("POST /api/v1/tasks/{id}/cancel", s.withValidID(s.cancelTask))
+	s.mux.HandleFunc("POST /api/v1/tasks/{id}/retry", s.withValidID(s.retryTask))
 	s.mux.HandleFunc("GET /api/v1/events", s.events)
 	s.mux.HandleFunc("GET /api/v1/extraction-tasks", s.listExtractionTasks)
 	s.mux.HandleFunc("POST /api/v1/extraction-tasks", s.createExtractionTask)
-	s.mux.HandleFunc("GET /api/v1/extraction-tasks/{id}", s.getExtractionTask)
-	s.mux.HandleFunc("DELETE /api/v1/extraction-tasks/{id}", s.deleteExtractionTask)
-	s.mux.HandleFunc("POST /api/v1/extraction-tasks/{id}/cancel", s.cancelExtractionTask)
-	s.mux.HandleFunc("POST /api/v1/extraction-tasks/{id}/retry", s.retryExtractionTask)
+	s.mux.HandleFunc("GET /api/v1/extraction-tasks/{id}", s.withValidID(s.getExtractionTask))
+	s.mux.HandleFunc("DELETE /api/v1/extraction-tasks/{id}", s.withValidID(s.deleteExtractionTask))
+	s.mux.HandleFunc("POST /api/v1/extraction-tasks/{id}/cancel", s.withValidID(s.cancelExtractionTask))
+	s.mux.HandleFunc("POST /api/v1/extraction-tasks/{id}/retry", s.withValidID(s.retryExtractionTask))
 	s.mux.HandleFunc("GET /api/v1/extraction-events", s.extractionEvents)
 	s.mux.HandleFunc("GET /api/v1/settings", s.settings)
 	s.mux.HandleFunc("PUT /api/v1/settings", s.updateSettings)
@@ -87,12 +90,26 @@ func jsonResponse(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 func fail(w http.ResponseWriter, status int, err error) {
+	var invalid *requestValidationError
+	if errors.As(err, &invalid) {
+		jsonResponse(w, status, map[string]any{"ok": false, "error": invalid.Error(), "fields": invalid.fields})
+		return
+	}
 	jsonResponse(w, status, map[string]any{"ok": false, "error": err.Error()})
 }
 func decode(r *http.Request, v any) error {
 	d := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	d.DisallowUnknownFields()
-	return d.Decode(v)
+	if err := d.Decode(v); err != nil {
+		return err
+	}
+	if err := d.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("请求体只能包含一个 JSON 对象")
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -124,34 +141,25 @@ func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func validateProfile(p *domain.Profile) error {
-	p.Name = strings.TrimSpace(p.Name)
-	p.Host = strings.TrimSpace(p.Host)
-	p.Username = strings.TrimSpace(p.Username)
-	if p.Name == "" || p.Host == "" {
-		return errors.New("name and host are required")
-	}
-	if p.Port < 1 || p.Port > 65535 {
-		return errors.New("port must be between 1 and 65535")
-	}
 	base, err := store.NormalizeRemotePath(p.BasePath)
 	if err != nil {
 		return err
 	}
 	p.BasePath = base
-	if p.Preset == "" {
-		p.Preset = "custom"
-	}
 	return nil
 }
 func (s *Server) saveProfile(w http.ResponseWriter, r *http.Request) {
-	var p domain.Profile
-	if err := decode(r, &p); err != nil {
+	var body profileRequest
+	if err := decode(r, &body); err != nil {
 		fail(w, 400, err)
 		return
 	}
-	if id := r.PathValue("id"); id != "" {
-		p.ID = id
+	body.normalize()
+	if err := s.validateRequest(body); err != nil {
+		fail(w, 400, err)
+		return
 	}
+	p := body.profile(r.PathValue("id"))
 	if err := validateProfile(&p); err != nil {
 		fail(w, 400, err)
 		return
@@ -259,18 +267,14 @@ func (s *Server) remoteEntries(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 200, map[string]any{"ok": true, "entries": entries, "path": current})
 }
 
-type operationRequest struct {
-	Action      string `json:"action"`
-	Path        string `json:"path"`
-	Destination string `json:"destination,omitempty"`
-	Recursive   bool   `json:"recursive,omitempty"`
-	ConfirmName string `json:"confirm_name,omitempty"`
-	IsDir       bool   `json:"is_dir,omitempty"`
-}
-
 func (s *Server) remoteOperation(w http.ResponseWriter, r *http.Request) {
 	var body operationRequest
 	if err := decode(r, &body); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	body.normalize()
+	if err := s.validateRequest(body); err != nil {
 		fail(w, 400, err)
 		return
 	}
@@ -339,19 +343,17 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 200, map[string]any{"ok": true, "tasks": tasks})
 }
 func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
-	var t domain.Task
-	if err := decode(r, &t); err != nil {
+	var body taskRequest
+	if err := decode(r, &body); err != nil {
 		fail(w, 400, err)
 		return
 	}
-	if len(t.Sources) == 0 {
-		fail(w, 400, errors.New("at least one source is required"))
+	body.normalize()
+	if err := s.validateRequest(body); err != nil {
+		fail(w, 400, err)
 		return
 	}
-	if !domain.ValidConflictPolicy(t.ConflictPolicy) {
-		fail(w, 400, errors.New("invalid conflict policy"))
-		return
-	}
+	t := body.task()
 	if _, err := s.store.Profile(r.Context(), t.ProfileID, false); err != nil {
 		fail(w, 400, errors.New("unknown profile"))
 		return
@@ -493,10 +495,12 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 200, map[string]any{"ok": true, "transfer_workers": s.store.Workers(r.Context())})
 }
 func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		TransferWorkers int `json:"transfer_workers"`
-	}
+	var body settingsRequest
 	if err := decode(r, &body); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	if err := s.validateRequest(body); err != nil {
 		fail(w, 400, err)
 		return
 	}

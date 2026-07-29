@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { ArrowRight } from '@lucide/vue'
 import { MessagePlugin } from 'tdesign-vue-next'
+import type { FormInstanceFunctions, FormRules } from 'tdesign-vue-next'
 import { formatBytes, parentPath } from '../api'
 import BrowserDeviceBar from '../components/BrowserDeviceBar.vue'
 import FileBrowser from '../components/FileBrowser.vue'
@@ -13,6 +14,7 @@ import { useProfilesStore } from '../stores/profiles'
 import { useTasksStore } from '../stores/tasks'
 import { useExtractionTasksStore } from '../stores/extractions'
 import type { Entry, SourceLocator } from '../types'
+import { optionalPasswordRules } from '../formValidation'
 
 const library = useLibraryStore()
 const profiles = useProfilesStore()
@@ -33,6 +35,9 @@ const extractSourceLocator = ref<SourceLocator | null>(null)
 const extractDestination = ref<SourceLocator | null>(null)
 const extractPassword = ref('')
 const deleteSources = ref(false)
+const extractionForm = ref<FormInstanceFunctions>()
+const extractionFormData = computed(() => ({ password: extractPassword.value }))
+const extractionRules: FormRules = { password: optionalPasswordRules }
 
 const currentRootLabel = computed(() => library.roots.find((root) => root.id === library.rootId)?.label || 'fnOS')
 const selectedEntries = computed(() => selectedSources.value.map((locator) => library.entries.find((entry) => entry.path === locator.path)).filter(Boolean))
@@ -87,6 +92,7 @@ function openExtraction(entry: Entry) {
 
 async function submitExtraction() {
   if (!extractSourceLocator.value || !extractDestination.value) return
+  if (await extractionForm.value?.validate() !== true) return
   extractSubmitting.value = true
   try {
     const task = await extractions.create(
@@ -151,8 +157,8 @@ async function submitExtraction() {
     <div v-if="extractSource && extractDestination" class="extraction-dialog">
       <t-alert theme="info" :message="`将 ${extractSource.name} 解压为新文件夹 ${extractionFolderName}；目标已存在时不会覆盖。`" />
       <LocalDirectoryPicker :initial="extractDestination" @change="extractDestination = $event" />
-      <t-form label-align="top">
-        <t-form-item label="压缩包密码（没有密码可留空）"><t-input v-model="extractPassword" type="password" autocomplete="off" clearable /></t-form-item>
+      <t-form ref="extractionForm" :data="extractionFormData" :rules="extractionRules" required-mark label-align="top">
+        <t-form-item name="password" label="压缩包密码（没有密码可留空）"><t-input v-model="extractPassword" type="password" autocomplete="off" clearable /></t-form-item>
         <t-checkbox v-model="deleteSources">解压成功后删除全部源分卷</t-checkbox>
       </t-form>
     </div>

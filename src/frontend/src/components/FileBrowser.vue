@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
+import type { FormInstanceFunctions, FormRules } from 'tdesign-vue-next'
 import {
   ArrowLeft,
   ArrowRight,
@@ -32,6 +33,7 @@ import { useTaskCenterStore } from '../stores/taskCenter'
 import { DesktopFileSelectionController } from '../file-browser/selection'
 import type { Entry, SourceLocator } from '../types'
 import type { FileSelectionSnapshot, IFileSelectionController, SelectionModifiers } from '../file-browser/selection'
+import { remoteEntryNameRules } from '../formValidation'
 
 type BrowserMode = 'source' | 'manage' | 'destination'
 type SortKey = 'name' | 'size' | 'modified_at'
@@ -71,12 +73,21 @@ const sort = reactive<{ key: SortKey; descending: boolean }>({ key: 'name', desc
 
 const editVisible = ref(false)
 const edit = reactive<{ mode: 'mkdir' | 'rename'; title: string; name: string }>({ mode: 'mkdir', title: '', name: '' })
+const editForm = ref<FormInstanceFunctions>()
+const editRules: FormRules = { name: remoteEntryNameRules }
 const moveVisible = ref(false)
 const movePath = ref('/')
 const moveEntries = ref<Entry[]>([])
 const moveLoading = ref(false)
 const deleteVisible = ref(false)
-const deleteConfirm = ref('')
+const deleteForm = reactive({ confirm_name: '' })
+const deleteFormRef = ref<FormInstanceFunctions>()
+const deleteRules: FormRules = {
+  confirm_name: [
+    { required: true, whitespace: true, message: '请输入完整文件夹名称', trigger: 'blur' },
+    { validator: (value) => value === singleSelection.value?.name, message: '输入的名称与文件夹名称不一致', trigger: 'blur' },
+  ],
+}
 const propertiesVisible = ref(false)
 const propertiesEntry = ref<Entry | null>(null)
 const pickerTargetPath = ref(props.mode === 'source' ? '' : '/')
@@ -383,6 +394,7 @@ function validName(name: string) {
 }
 
 async function applyEdit() {
+  if (await editForm.value?.validate() !== true) return
   const name = edit.name.trim()
   if (!validName(name)) { await MessagePlugin.warning('名称不能为空，且不能包含 / 或 \\'); return }
   busy.value = true
@@ -442,7 +454,7 @@ function askDelete() {
   if (!canDelete.value || isPicker.value) return
   const entries = [...selectedEntries.value]
   if (entries.length === 1 && entries[0].is_dir) {
-    deleteConfirm.value = ''
+    deleteForm.confirm_name = ''
     deleteVisible.value = true
     return
   }
@@ -467,10 +479,10 @@ function askDelete() {
 
 async function applyDirectoryDelete() {
   const entry = singleSelection.value
-  if (!entry || deleteConfirm.value !== entry.name || isPicker.value) return
+  if (!entry || isPicker.value || await deleteFormRef.value?.validate() !== true || deleteForm.confirm_name !== entry.name) return
   busy.value = true
   try {
-    const result = await files.operation({ action: 'delete', path: entry.path, is_dir: true, recursive: true, confirm_name: deleteConfirm.value })
+    const result = await files.operation({ action: 'delete', path: entry.path, is_dir: true, recursive: true, confirm_name: deleteForm.confirm_name })
     deleteVisible.value = false
     clearSelection()
     if (result.task) {
@@ -769,8 +781,8 @@ onBeforeUnmount(() => {
   </Teleport>
 
   <t-dialog v-model:visible="editVisible" :header="edit.title" :confirm-btn="{ content: '确认', loading: busy }" @confirm="applyEdit">
-    <t-form label-align="top">
-      <t-form-item label="名称"><t-input v-model="edit.name" autofocus @enter="applyEdit" /></t-form-item>
+    <t-form ref="editForm" :data="edit" :rules="editRules" required-mark label-align="top">
+      <t-form-item name="name" label="名称"><t-input v-model="edit.name" autofocus @enter="applyEdit" /></t-form-item>
       <p class="dialog-path-hint">位置：{{ files.path }}</p>
     </t-form>
   </t-dialog>
@@ -804,10 +816,12 @@ onBeforeUnmount(() => {
       </div>
     </t-dialog>
 
-    <t-dialog v-model:visible="deleteVisible" header="永久删除文件夹" :confirm-btn="{ content: '永久删除', theme: 'danger', loading: busy, disabled: deleteConfirm !== singleSelection?.name }" @confirm="applyDirectoryDelete">
-      <t-alert theme="error" message="文件夹及其中的所有内容将永久删除。请输入文件夹名称进行确认。" />
-      <p class="dialog-hint">{{ singleSelection?.name }}</p>
-      <t-input v-model="deleteConfirm" placeholder="输入完整文件夹名称" />
+    <t-dialog v-model:visible="deleteVisible" header="永久删除文件夹" :confirm-btn="{ content: '永久删除', theme: 'danger', loading: busy, disabled: deleteForm.confirm_name !== singleSelection?.name }" @confirm="applyDirectoryDelete">
+      <t-form ref="deleteFormRef" :data="deleteForm" :rules="deleteRules" required-mark label-align="top">
+        <t-alert theme="error" message="文件夹及其中的所有内容将永久删除。请输入文件夹名称进行确认。" />
+        <p class="dialog-hint">{{ singleSelection?.name }}</p>
+        <t-form-item name="confirm_name" label="确认名称"><t-input v-model="deleteForm.confirm_name" placeholder="输入完整文件夹名称" /></t-form-item>
+      </t-form>
     </t-dialog>
   </template>
 </template>

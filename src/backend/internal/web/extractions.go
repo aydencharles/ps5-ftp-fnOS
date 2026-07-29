@@ -14,13 +14,6 @@ import (
 	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
 )
 
-type extractionRequest struct {
-	Source            domain.SourceLocator `json:"source"`
-	DestinationParent domain.SourceLocator `json:"destination_parent"`
-	Password          string               `json:"password"`
-	DeleteSources     bool                 `json:"delete_sources"`
-}
-
 func normalizedLocalPath(value string) string {
 	value = strings.ReplaceAll(value, `\`, "/")
 	return strings.TrimPrefix(path.Clean("/"+value), "/")
@@ -29,9 +22,6 @@ func normalizedLocalPath(value string) string {
 func (s *Server) validateExtractionRequest(request extractionRequest) (domain.ExtractionTask, error) {
 	request.Source.Path = normalizedLocalPath(request.Source.Path)
 	request.DestinationParent.Path = normalizedLocalPath(request.DestinationParent.Path)
-	if request.Source.RootID == "" || request.DestinationParent.RootID == "" {
-		return domain.ExtractionTask{}, errors.New("来源和目标存储位置不能为空")
-	}
 	if !archiveengine.SupportedName(path.Base(request.Source.Path)) {
 		return domain.ExtractionTask{}, errors.New("只支持普通 .7z 或首卷 .7z.001")
 	}
@@ -69,8 +59,8 @@ func (s *Server) validateExtractionRequest(request extractionRequest) (domain.Ex
 		return domain.ExtractionTask{}, err
 	}
 	return domain.ExtractionTask{
-		Source:            request.Source,
-		DestinationParent: request.DestinationParent,
+		Source:            request.Source.locator(),
+		DestinationParent: request.DestinationParent.locator(),
 		Destination:       domain.SourceLocator{RootID: request.DestinationParent.RootID, Path: destination},
 		DeleteSources:     request.DeleteSources,
 		Password:          request.Password,
@@ -90,6 +80,11 @@ func (s *Server) listExtractionTasks(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createExtractionTask(w http.ResponseWriter, r *http.Request) {
 	var request extractionRequest
 	if err := decode(r, &request); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	request.normalize()
+	if err := s.validateRequest(request); err != nil {
 		fail(w, 400, err)
 		return
 	}
@@ -145,18 +140,21 @@ func (s *Server) retryExtractionTask(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, errors.New("活动中的解压任务不能重试"))
 		return
 	}
-	var request struct {
-		Password string `json:"password"`
-	}
+	var request extractionRetryRequest
 	if r.ContentLength != 0 {
 		if err = decode(r, &request); err != nil {
 			fail(w, 400, err)
 			return
 		}
+		if err = s.validateRequest(request); err != nil {
+			fail(w, 400, err)
+			return
+		}
 	}
 	validated, err := s.validateExtractionRequest(extractionRequest{
-		Source: old.Source, DestinationParent: old.DestinationParent,
-		Password: request.Password, DeleteSources: old.DeleteSources,
+		Source:            sourceLocatorRequest{RootID: old.Source.RootID, Path: old.Source.Path},
+		DestinationParent: destinationLocatorRequest{RootID: old.DestinationParent.RootID, Path: old.DestinationParent.Path},
+		Password:          request.Password, DeleteSources: old.DeleteSources,
 	})
 	if err != nil {
 		fail(w, 400, err)
