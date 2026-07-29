@@ -554,6 +554,9 @@ button, input { font: inherit; }
 .t-button .t-button__text > svg { flex: 0 0 auto; margin-right: 0 !important; vertical-align: middle; }
 .navigation-buttons .t-button, .navigation-buttons .t-button.t-size-s { width: 28px; min-width: 28px; height: 28px; padding: 0 7px; }
 .t-input, .t-input-number, .t-select-input { border-radius: 3px; box-shadow: none !important; }
+// TDesign positions form feedback outside the control box by default. Keep it
+// in flow so validation can expand dialogs without covering following content.
+.t-form .t-form__controls > .t-input__extra { position: static; }
 .t-table { font-size: var(--ui-font-small); }
 .t-table th { height: 40px; color: @text-secondary; background: @surface-subtle !important; font-weight: 550; }
 .t-table td { height: 48px; }

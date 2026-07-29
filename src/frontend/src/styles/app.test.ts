@@ -52,4 +52,8 @@ describe('global UI standards', () => {
     expect(mobileStyles).toMatch(/\.profile-row:last-child \{ padding-bottom: 0; \}/)
     expect(mobileStyles).toMatch(/\.settings-body > \.t-slider__container \{ margin-bottom: 26px; \}/)
   })
+
+  it('keeps form validation messages in document flow', () => {
+    expect(styles).toMatch(/\.t-form \.t-form__controls > \.t-input__extra \{[^}]*position: static/)
+  })
 })
