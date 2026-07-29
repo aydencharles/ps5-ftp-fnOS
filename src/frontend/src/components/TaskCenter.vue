@@ -134,7 +134,7 @@ function updatePanelPosition() {
   const viewportWidth = globalThis.innerWidth
   const viewportHeight = globalThis.innerHeight
   const panelWidth = panelElement.value?.offsetWidth || Math.min(500, viewportWidth - launcherMargin * 2)
-  const panelHeight = panelElement.value?.offsetHeight || Math.min(620, viewportHeight - launcherMargin * 2)
+  const panelHeight = panelElement.value?.offsetHeight || (viewportHeight - launcherMargin * 2) * .8
   const gap = 12
   const centeredLeft = launcherPoint.x + launcherSize / 2 - panelWidth / 2
   const centeredTop = launcherPoint.y + launcherSize / 2 - panelHeight / 2
