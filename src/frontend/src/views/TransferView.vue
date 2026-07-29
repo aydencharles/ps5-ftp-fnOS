@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ArrowRight, HardDrive } from '@lucide/vue'
+import { ArrowRight } from '@lucide/vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { formatBytes } from '../api'
 import BrowserDeviceBar from '../components/BrowserDeviceBar.vue'
 import FileBrowser from '../components/FileBrowser.vue'
+import FnOSIcon from '../components/FnOSIcon.vue'
 import PlayStationIcon from '../components/PlayStationIcon.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
@@ -69,7 +70,7 @@ async function submit() {
   <section class="transfer-workbench transfer-workbench-single">
     <div class="browser-pane unified-browser-pane">
       <BrowserDeviceBar title="飞牛存储" subtitle="双击目录进入，勾选要传输的内容">
-        <template #icon><HardDrive :size="17" /></template>
+        <template #icon><FnOSIcon :size="18" /></template>
         <template #control><t-select v-model="library.rootId" :options="library.storageRoots.map(root => ({ label: root.label, value: root.id }))" placeholder="选择存储空间" class="location-select devicebar-select" /></template>
       </BrowserDeviceBar>
       <FileBrowser v-model:selected-sources="selectedSources" mode="source" compact @copy-to-ps5="openCopyToPS5" />
@@ -89,7 +90,7 @@ async function submit() {
   <t-dialog v-model:visible="confirmVisible" header="确认传输任务" width="620px" :confirm-btn="{ content: '创建任务', loading: submitting }" @confirm="submit">
     <div class="transfer-confirm">
       <div class="confirm-route-card">
-        <div><span class="confirm-route-icon"><HardDrive :size="18" /></span><small>来源</small><strong>{{ currentRootLabel }} / {{ selectedLabel }}</strong></div>
+        <div><span class="confirm-route-icon"><FnOSIcon :size="18" /></span><small>来源</small><strong>{{ currentRootLabel }} / {{ selectedLabel }}</strong></div>
         <ArrowRight class="confirm-route-arrow" :size="18" />
         <div><span class="confirm-route-icon"><PlayStationIcon :size="18" /></span><small>目的地</small><strong>{{ profileLabel }} · {{ destination }}</strong></div>
       </div>

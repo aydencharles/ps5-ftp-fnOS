@@ -22,7 +22,7 @@ const pageInfo = computed(() => {
     '/': '从飞牛存储选择文件发送到 PS5',
     '/tasks': '查看传输状态、实时速度和历史结果',
     '/files': '浏览并管理 PS5 上的文件和目录',
-    '/settings': '管理 PS5 连接与传输并发',
+    '/settings': '管理连接、传输与界面偏好',
   }
   return {
     title: String(route.meta.title || 'PS5 FTP Manager'),

@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import { Pencil, Plus, PlugZap, Trash2 } from '@lucide/vue'
 import ConnectionTestDialog from '../components/ConnectionTestDialog.vue'
+import InterfaceSettings from '../components/InterfaceSettings.vue'
 import PlayStationIcon from '../components/PlayStationIcon.vue'
 import { useProfilesStore } from '../stores/profiles'
 import { useSystemStore } from '../stores/system'
@@ -35,6 +36,8 @@ function test(profile: Profile) {
 
 <template>
   <div class="settings-page">
+    <InterfaceSettings />
+
     <section class="settings-section">
       <header><h2>PS5 连接</h2><p>保存常用 PS5 的 FTP 地址和访问目录</p></header>
       <div class="settings-body">
