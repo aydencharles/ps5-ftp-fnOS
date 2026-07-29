@@ -24,6 +24,22 @@ describe('library store', () => {
     expect(store.selected).toEqual([{ root_id: 'vol2', path: '1000/GAME' }])
   })
 
+  it('replaces a selected ancestor when selecting one of its children', () => {
+    const store = useLibraryStore()
+    store.rootId = 'vol2'
+    store.selected = [
+      { root_id: 'vol2', path: '1000/GAME' },
+      { root_id: 'vol2', path: '1000/OTHER.pkg' },
+    ]
+
+    store.toggle({ name: 'eboot.bin', path: '1000/GAME/eboot.bin', is_dir: false, size: 1 })
+
+    expect(store.selected).toEqual([
+      { root_id: 'vol2', path: '1000/OTHER.pkg' },
+      { root_id: 'vol2', path: '1000/GAME/eboot.bin' },
+    ])
+  })
+
   it('keeps the newest directory result when a previous request finishes late', async () => {
     const store = useLibraryStore()
     store.hydrate([{ id: 'vol2', label: '存储空间 2', favorite: false, kind: 'volume' }])

@@ -42,9 +42,12 @@ export const useLibraryStore = defineStore('library', {
         this.selected.splice(index, 1)
         return
       }
-      const hasAncestor = this.selected.some((value) => value.root_id === locator.root_id && locator.path.startsWith(`${value.path}/`))
-      if (hasAncestor) return
-      this.selected = this.selected.filter((value) => value.root_id !== locator.root_id || !value.path.startsWith(`${locator.path}/`))
+      this.selected = this.selected.filter((value) => {
+        if (value.root_id !== locator.root_id) return true
+        const valueIsAncestor = locator.path.startsWith(`${value.path}/`)
+        const valueIsDescendant = value.path.startsWith(`${locator.path}/`)
+        return !valueIsAncestor && !valueIsDescendant
+      })
       this.selected.push(locator)
     },
     isSelected(entry: Entry) { return this.selected.some((v) => v.root_id === this.rootId && v.path === entry.path) },

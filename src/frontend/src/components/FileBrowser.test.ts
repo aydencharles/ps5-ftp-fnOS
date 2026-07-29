@@ -147,6 +147,26 @@ describe('File Browser', () => {
     expect(wrapper.get('[data-testid="ps5-breadcrumb"]').text()).not.toContain('1000')
   })
 
+  it('selects a child on the first click after opening a selected directory', async () => {
+    const library = useLibraryStore()
+    library.hydrate([{ id: 'vol2', label: '存储空间 2', favorite: false, kind: 'volume' }])
+    const wrapper = mount(FileBrowser, {
+      props: { mode: 'source', compact: true },
+      global: { stubs, mocks: { $router: { push: vi.fn() } } },
+    })
+    await flushPromises()
+
+    const directory = wrapper.get('tr[data-entry-path="1000/PS5 游戏"]')
+    await directory.trigger('click')
+    expect(library.selected).toEqual([{ root_id: 'vol2', path: '1000/PS5 游戏' }])
+
+    await directory.trigger('dblclick')
+    await flushPromises()
+    await wrapper.get('tr[data-entry-path="1000/PS5 游戏/eboot.bin"]').trigger('click')
+
+    expect(library.selected).toEqual([{ root_id: 'vol2', path: '1000/PS5 游戏/eboot.bin' }])
+  })
+
   it('loads and selects correctly when bootstrap supplies the first Library Root after mounting', async () => {
     const library = useLibraryStore()
     const wrapper = mount(FileBrowser, {
