@@ -57,4 +57,12 @@ describe('global UI standards', () => {
   it('keeps form validation messages in document flow', () => {
     expect(styles).toMatch(/\.t-form \.t-form__controls > \.t-input__extra \{[^}]*position: static/)
   })
+
+  it('keeps the local directory list as the picker flexible row', () => {
+    expect(styles).toMatch(/\.local-directory-picker \{[^}]*grid-template-rows: auto minmax\(120px, 1fr\) auto/)
+  })
+
+  it('does not add a left accent border to active task-center items', () => {
+    expect(styles).not.toMatch(/\.task-center-item\.is-(?:running|scanning)[^}]*border-left/)
+  })
 })
