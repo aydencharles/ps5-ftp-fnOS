@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Settings } from '@lucide/vue'
-import logoUrl from '../../../assets/logo.png'
+import { MessagePlugin } from 'tdesign-vue-next'
 import FnOSIcon from './components/FnOSIcon.vue'
 import PlayStationIcon from './components/PlayStationIcon.vue'
 import TaskCenter from './components/TaskCenter.vue'
@@ -10,12 +10,32 @@ import { useSystemStore } from './stores/system'
 import { useProfilesStore } from './stores/profiles'
 import { useLibraryStore } from './stores/library'
 import { useTasksStore } from './stores/tasks'
+import { useExtractionTasksStore } from './stores/extractions'
+import { parentPath } from './api'
+import { notifyError } from './errorFeedback'
+import { enforceProfileRoute } from './profileRecovery'
 
 const route = useRoute()
+const router = useRouter()
 const system = useSystemStore()
 const profiles = useProfilesStore()
 const library = useLibraryStore()
 const tasks = useTasksStore()
+const extractions = useExtractionTasksStore()
+
+async function showError(error: unknown) {
+  await notifyError(error)
+}
+
+watch(() => extractions.items, (current, previous) => {
+  const oldStates = new Map((previous || []).map((task) => [task.id, task.state]))
+  const affectsCurrentDirectory = current.some((task) => {
+    if (task.state !== 'succeeded' || !oldStates.has(task.id) || oldStates.get(task.id) === 'succeeded') return false
+    return (task.source.root_id === library.rootId && parentPath(task.source.path) === library.path)
+      || (task.destination_parent.root_id === library.rootId && task.destination_parent.path === library.path)
+  })
+  if (affectsCurrentDirectory) void library.load().catch(showError)
+})
 
 const pageInfo = computed(() => {
   const descriptions: Record<string, string> = {
@@ -35,21 +55,21 @@ onMounted(async () => {
     profiles.hydrate(data.profiles)
     library.hydrate(data.library_roots)
     tasks.hydrate(data.tasks)
+    extractions.hydrate(data.extraction_tasks)
+    await enforceProfileRoute(profiles, router)
     tasks.connect()
+    extractions.connect()
   } catch (error) {
     system.error = error instanceof Error ? error.message : String(error)
+    await MessagePlugin.error(system.error)
   }
 })
-onBeforeUnmount(() => tasks.stream?.close())
+onBeforeUnmount(() => { tasks.stream?.close(); extractions.stream?.close() })
 </script>
 
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <router-link class="brand" to="/" aria-label="返回首页">
-        <img class="brand-logo" :src="logoUrl" alt="">
-        <span class="brand-name">PS5 FTP Manager</span>
-      </router-link>
       <nav class="main-nav" aria-label="主导航">
         <router-link to="/"><FnOSIcon :size="16" />飞牛传输</router-link>
         <router-link to="/files"><PlayStationIcon :size="16" />PS5 文件</router-link>
@@ -69,8 +89,7 @@ onBeforeUnmount(() => tasks.stream?.close())
         </div>
         <span class="network-note">仅限可信局域网</span>
       </div>
-      <t-alert v-if="system.error" theme="error" :message="system.error" />
-      <router-view v-else />
+      <router-view />
     </main>
     <TaskCenter />
   </div>

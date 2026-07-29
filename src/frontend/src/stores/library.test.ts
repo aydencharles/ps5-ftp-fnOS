@@ -21,11 +21,11 @@ describe('library store', () => {
     store.hydrate([{ id: 'vol2', label: '存储空间 2', favorite: false, kind: 'volume' }])
     let finishFirst: () => void = () => {}
     const firstResponse = new Promise<Response>((resolve) => {
-      finishFirst = () => resolve({ ok: true, json: async () => ({ entries: [{ name: '过期目录', path: 'old', is_dir: true, size: 0 }] }) } as Response)
+      finishFirst = () => resolve({ ok: true, status: 200, json: async () => ({ code: 0, message: 'success', data: { entries: [{ name: '过期目录', path: 'old', is_dir: true, size: 0 }] } }) } as Response)
     })
     vi.stubGlobal('fetch', vi.fn()
       .mockReturnValueOnce(firstResponse)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ entries: [{ name: '当前目录', path: 'new', is_dir: true, size: 0 }] }) } as Response))
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, message: 'success', data: { entries: [{ name: '当前目录', path: 'new', is_dir: true, size: 0 }] } }) } as Response))
 
     const initial = store.load()
     store.path = 'newer'

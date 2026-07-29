@@ -22,7 +22,7 @@ const profile: Profile = {
 }
 
 function jsonResponse(data: unknown) {
-  return { ok: true, status: 200, json: async () => data } as Response
+  return { ok: true, status: 200, json: async () => ({ code: 0, message: 'success', data }) } as Response
 }
 
 function mountDialog(response: ConnectionTestResult) {

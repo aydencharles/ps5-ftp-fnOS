@@ -3,7 +3,10 @@ import { computed, ref } from 'vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import type { DropdownOption } from 'tdesign-vue-next'
 import { ChevronDown } from '@lucide/vue'
+import { useRoute, useRouter } from 'vue-router'
+import ExtractionTasksPanel from '../components/ExtractionTasksPanel.vue'
 import { formatBytes, formatETA } from '../api'
+import { notifyError } from '../errorFeedback'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
 import { useTasksStore } from '../stores/tasks'
@@ -12,6 +15,10 @@ import type { Task, TaskEvent, TaskItem } from '../types'
 const tasks = useTasksStore()
 const profiles = useProfilesStore()
 const library = useLibraryStore()
+const route = useRoute()
+const router = useRouter()
+const category = computed(() => route.query.tab === 'extraction' ? 'extraction' : 'transfer')
+function selectCategory(value: 'transfer' | 'extraction') { void router.replace({ query: { ...route.query, tab: value } }) }
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detailTask = ref<Task | null>(null)
@@ -100,7 +107,7 @@ async function cancel(id: string) {
     confirmBtn: { content: '取消任务', theme: 'danger' },
     onConfirm: async () => {
       try { await tasks.cancel(id); dialog.destroy(); await MessagePlugin.success('取消请求已提交') }
-      catch (error) { await MessagePlugin.error(error instanceof Error ? error.message : String(error)) }
+      catch (error) { await notifyError(error) }
     },
   })
 }
@@ -110,7 +117,7 @@ async function retry(task: Task) {
     await tasks.retry(task.id)
     await MessagePlugin.success('新任务已加入队列，将重新扫描来源')
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   }
 }
 
@@ -126,7 +133,7 @@ function removeHistory(task: Task) {
         dialog.destroy()
         await MessagePlugin.success('任务记录已删除')
       } catch (error) {
-        await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+        await notifyError(error)
       }
     },
   })
@@ -144,12 +151,17 @@ async function openDetail(task: Task) {
     detailItems.value = data.items || []
     detailEvents.value = data.events || []
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { detailLoading.value = false }
 }
 </script>
 
 <template>
+  <div class="page-task-category-tabs" role="tablist" aria-label="任务类型">
+    <button :class="{ 'is-active': category === 'transfer' }" @click="selectCategory('transfer')">传输任务</button>
+    <button :class="{ 'is-active': category === 'extraction' }" @click="selectCategory('extraction')">解压任务</button>
+  </div>
+  <template v-if="category === 'transfer'">
   <section class="data-section">
     <header class="section-header"><div><h2>进行中的任务</h2><p>同一台 PS5 一次只执行一个任务</p></div><span class="section-count">{{ activeTasks.length }}</span></header>
     <div v-if="activeTasks.length" class="task-table">
@@ -202,4 +214,6 @@ async function openDetail(task: Task) {
       <section v-if="detailItems.length" class="task-items"><h3>文件明细 <small>显示前 20 项</small></h3><div v-for="item in detailItems.slice(0, 20)" :key="item.id"><span>{{ item.source_path }}</span><small>{{ item.state }} · {{ formatBytes(item.transferred) }} / {{ formatBytes(item.size) }}</small></div></section>
     </div>
   </t-dialog>
+  </template>
+  <ExtractionTasksPanel v-else />
 </template>

@@ -3,9 +3,11 @@ import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MessagePlugin } from 'tdesign-vue-next'
 import FileBrowser from './FileBrowser.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
+import { usePS5FilesStore } from '../stores/ps5Files'
 import type { SourceLocator } from '../types'
 
 vi.mock('tdesign-vue-next', () => ({
@@ -47,13 +49,14 @@ const stubs = {
 }
 
 function jsonResponse(data: unknown) {
-  return { ok: true, status: 200, json: async () => data } as Response
+  return { ok: true, status: 200, json: async () => ({ code: 0, message: 'success', data }) } as Response
 }
 
 describe('File Browser', () => {
   const requests: Array<{ url: string; method: string; body?: Record<string, unknown> }> = []
 
   beforeEach(() => {
+    vi.clearAllMocks()
     requests.length = 0
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -103,6 +106,12 @@ describe('File Browser', () => {
     })
   }
 
+  function mountManage() {
+    return mount(FileBrowser, {
+      global: { stubs, mocks: { $router: { push: vi.fn() } } },
+    })
+  }
+
   function mountSource(selectedSources: SourceLocator[] = []) {
     const library = useLibraryStore()
     library.hydrate([{ id: 'vol2', label: '存储空间 2', favorite: false, kind: 'volume' }])
@@ -126,6 +135,51 @@ describe('File Browser', () => {
     expect(breadcrumb.text()).not.toContain('//')
     expect(wrapper.findAll('tbody tr[data-entry-path]').map((row) => row.attributes('data-entry-path'))).toEqual(['/data/homebrew/Games'])
     expect(wrapper.text()).not.toContain('eboot.bin')
+  })
+
+  it('defines table columns so responsive layouts can collapse hidden columns', async () => {
+    const manager = mountManage()
+    const destination = mountDestination()
+    await flushPromises()
+
+    expect(manager.findAll('.station-table col').map((column) => column.classes().join(' '))).toEqual([
+      'check-column',
+      '',
+      'type-column',
+      'size-column',
+      'time-column',
+    ])
+    expect(destination.findAll('.station-table col').map((column) => column.classes().join(' '))).toEqual([
+      '',
+      'time-column',
+    ])
+  })
+
+  it('shows PS5 connection failures as a global message instead of page content', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ code: 2001, message: '无法连接到 PS5', data: null }),
+    } as Response)
+
+    const wrapper = mountDestination()
+    await flushPromises()
+
+    expect(MessagePlugin.error).toHaveBeenCalledWith('无法连接到 PS5')
+    expect(wrapper.text()).not.toContain('无法连接到 PS5')
+  })
+
+  it('clears the remote browser without requesting an empty or deleted profile id', async () => {
+    const wrapper = mountDestination()
+    await flushPromises()
+    requests.length = 0
+
+    useProfilesStore().hydrate([])
+    await flushPromises()
+
+    expect(requests).toEqual([])
+    expect(usePS5FilesStore().profileId).toBe('')
+    expect(wrapper.findAll('tbody tr[data-entry-path]')).toHaveLength(0)
   })
 
   it('uses the directory currently being browsed as the destination', async () => {
@@ -289,6 +343,33 @@ describe('File Browser', () => {
 
     await wrapper.get('.station-table-wrap').trigger('click')
     expect(latestSources(wrapper)).toEqual([])
+  })
+
+  it('offers extraction only for a .7z archive or its first split volume', async () => {
+    const wrapper = mountSource()
+    await flushPromises()
+    const library = useLibraryStore()
+    library.entries = [
+      { name: 'single.7z', path: '1000/single.7z', is_dir: false, size: 1 },
+      { name: 'split.7z.001', path: '1000/split.7z.001', is_dir: false, size: 1 },
+      { name: 'split.7z.002', path: '1000/split.7z.002', is_dir: false, size: 1 },
+    ]
+    await flushPromises()
+    const extractionButton = () => wrapper.findAll('.station-actions button').find((button) => button.text().includes('解压'))!
+
+    await wrapper.get('tr[data-entry-path="1000/single.7z"]').trigger('click')
+    await extractionButton().trigger('click')
+    expect(wrapper.emitted('extract-archive')?.at(-1)?.[0]).toEqual(library.entries[0])
+
+    await wrapper.get('tr[data-entry-path="1000/split.7z.001"]').trigger('click')
+    await extractionButton().trigger('click')
+    expect(wrapper.emitted('extract-archive')?.at(-1)?.[0]).toEqual(library.entries[1])
+
+    const emitted = wrapper.emitted('extract-archive')?.length
+    await wrapper.get('tr[data-entry-path="1000/split.7z.002"]').trigger('click')
+    expect(extractionButton().attributes('disabled')).toBeDefined()
+    await extractionButton().trigger('click')
+    expect(wrapper.emitted('extract-archive')?.length).toBe(emitted)
   })
 
   it('selects a picker target on one click and navigates only on double click', async () => {

@@ -42,6 +42,27 @@ export interface Entry {
   game_kind?: 'game-directory' | 'game-image'
 }
 export interface SourceLocator { root_id: string; path: string }
+export interface ExtractionTask {
+  id: string
+  source: SourceLocator
+  destination_parent: SourceLocator
+  destination: SourceLocator
+  delete_sources: boolean
+  state: 'queued' | 'scanning' | 'extracting' | 'cleaning' | 'canceling' | 'succeeded' | 'failed' | 'canceled' | 'interrupted' | string
+  total_bytes: number
+  extracted_bytes: number
+  speed_bytes: number
+  eta_seconds: number | null
+  current_file?: string
+  total_items: number
+  completed_items: number
+  error?: string
+  warning?: string
+  retry_of?: string
+  created_at: string
+  started_at?: string
+  finished_at?: string
+}
 export interface Task {
   id: string
   type: string

@@ -70,6 +70,7 @@ A focused PS5 file-transfer manager for NAS workflows — no FTP mounts or exter
 
 - **Bidirectional transfers** — upload from fnOS to PS5 or download from PS5 into a selected Library Root
 - **Friendly local browser** — displays fnOS storage locations without exposing internal paths such as `/vol2/1000/...`
+- **Independent 7z extraction** — extracts ordinary `.7z` files or `.7z.001` split sets on fnOS, with password support, safe atomic publication, progress, cancellation, and retry
 - **Game-aware selection** — recognizes folders containing `eboot.bin` and `.exfat`, `.ffpfs`, `.ffpfsc`, and `.phu` images while allowing arbitrary files and folders
 - **Persistent task queue** — SQLite-backed tasks with cancellation, retry, removable history, real byte progress, smoothed speed, and ETA
 - **Controlled concurrency** — one active task per PS5, parallel tasks across profiles, and 1–4 file connections per task
@@ -124,6 +125,15 @@ FTP traffic is unencrypted and uses passive mode. Older PS5 firmware may write s
 5. To copy in the other direction, select items in **PS5 Files**, choose **Download**, and select an fnOS destination.
 
 You can cancel queued or running tasks, retry terminal tasks, and remove finished history records. Removing a task record never deletes transferred files.
+
+### Extract 7z archives on fnOS
+
+1. In **New Transfer**, select one ordinary `.7z` file or the first volume of a split archive (`.7z.001`). Later volumes such as `.002` are discovered automatically and cannot be selected as an extraction source.
+2. Choose **Extract**, select an fnOS parent directory, and enter the archive password when required.
+3. Optionally enable source-volume deletion. It is disabled by default and runs only after the destination has been published successfully.
+4. Follow the independent extraction queue under **Tasks → Extraction Tasks** or in the floating task center.
+
+Each task creates a new directory named after the archive. Archive paths are scanned before writing; absolute paths, traversal, duplicate targets, symbolic links, and special files are rejected. Output is written to a hidden staging directory and atomically published without merging or overwriting an existing destination. The archive's internal directory structure is preserved. Extraction runs one task at a time independently of PS5 transfers.
 
 ### Conflict policies
 
@@ -233,6 +243,11 @@ pnpm --dir src/frontend build
 | `POST` | `/api/v1/tasks/{id}/cancel` | Cancel a task |
 | `POST` | `/api/v1/tasks/{id}/retry` | Retry a terminal task |
 | `GET` | `/api/v1/events` | SSE task snapshot stream |
+| `GET/POST` | `/api/v1/extraction-tasks` | List or create independent 7z extraction tasks |
+| `GET/DELETE` | `/api/v1/extraction-tasks/{id}` | Read an extraction task or remove its terminal record |
+| `POST` | `/api/v1/extraction-tasks/{id}/cancel` | Cancel a queued, scanning, or extracting task |
+| `POST` | `/api/v1/extraction-tasks/{id}/retry` | Retry a terminal extraction task with a new password |
+| `GET` | `/api/v1/extraction-events` | SSE extraction-task snapshot stream |
 | `GET/PUT` | `/api/v1/settings` | Read or update transfer concurrency |
 
 The Library API accepts only `{root_id, path}` locators, never client-supplied fnOS absolute paths. The backend resolves symbolic links and rejects paths that escape a Library Root. PS5 operations are similarly confined to each profile's base path.
@@ -257,7 +272,7 @@ Paths and ports prefer fnOS-injected variables, with development overrides where
 ```text
 .
 ├── src/
-│   ├── backend/             Go HTTP API, FTP adapter, SQLite store, and task queue
+│   ├── backend/             Go HTTP API, FTP/7z services, SQLite store, and independent queues
 │   └── frontend/            Vue 3 / TypeScript / TDesign frontend
 ├── packaging/               fnpack metadata, privileges, UI config, and lifecycle scripts
 ├── scripts/                 Development, lifecycle test, and one-shot build scripts
@@ -294,6 +309,7 @@ Paths and ports prefer fnOS-injected variables, with development overrides where
 Built with open-source libraries and the fnOS third-party application framework.
 
 - [jlaffaye/ftp](https://github.com/jlaffaye/ftp) — FTP client and transfer primitives
+- [bodgit/sevenzip](https://github.com/bodgit/sevenzip) — pure-Go 7z and split-volume reader
 - [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) — pure-Go persistent task and profile storage
 - [Vue](https://vuejs.org/), [TDesign Vue Next](https://github.com/Tencent/tdesign-vue-next), and [Lucide](https://lucide.dev/) — Web UI
 - **fnOS** third-party app framework

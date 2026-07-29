@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import FileBrowser from '../components/FileBrowser.vue'
 import FnOSIcon from '../components/FnOSIcon.vue'
+import { notifyError } from '../errorFeedback'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
 import { useTasksStore } from '../stores/tasks'
@@ -44,7 +45,7 @@ async function copyToFnOS() {
     pickerVisible.value = false
     await MessagePlugin.success(`下载任务 ${task.id.slice(0, 8)} 已加入队列`)
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { submitting.value = false }
 }
 </script>

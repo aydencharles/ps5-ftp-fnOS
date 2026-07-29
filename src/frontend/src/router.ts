@@ -9,7 +9,7 @@ export default createRouter({
   routes: [
     { path: '/', component: TransferView, meta: { title: '新建传输' } },
     { path: '/tasks', component: TasksView, meta: { title: '任务中心' } },
-    { path: '/files', component: PS5FilesView, meta: { title: 'PS5 文件' } },
+    { path: '/files', component: PS5FilesView, meta: { title: 'PS5 文件', requiresProfile: true } },
     { path: '/settings', component: SettingsView, meta: { title: '设置' } },
   ],
 })

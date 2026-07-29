@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
+import type { FormInstanceFunctions, FormRules } from 'tdesign-vue-next'
 import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  ArchiveRestore,
   Download,
   Eye,
   EyeOff,
@@ -22,15 +24,17 @@ import {
   X,
 } from '@lucide/vue'
 import { formatBytes, joinPath, remoteParent } from '../api'
+import { notifyError } from '../errorFeedback'
 import BrowserDeviceBar from './BrowserDeviceBar.vue'
 import PlayStationIcon from './PlayStationIcon.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
 import { usePS5FilesStore } from '../stores/ps5Files'
-import { useTasksStore } from '../stores/tasks'
+import { useTaskCenterStore } from '../stores/taskCenter'
 import { DesktopFileSelectionController } from '../file-browser/selection'
 import type { Entry, SourceLocator } from '../types'
 import type { FileSelectionSnapshot, IFileSelectionController, SelectionModifiers } from '../file-browser/selection'
+import { remoteEntryNameRules } from '../formValidation'
 
 type BrowserMode = 'source' | 'manage' | 'destination'
 type SortKey = 'name' | 'size' | 'modified_at'
@@ -55,11 +59,12 @@ const emit = defineEmits<{
   'choose-local-path': [locator: SourceLocator]
   'copy-to-ps5': []
   'copy-to-fnos': [entries: Entry[]]
+  'extract-archive': [entry: Entry]
 }>()
 const library = useLibraryStore()
 const profiles = useProfilesStore()
 const files = usePS5FilesStore()
-const tasks = useTasksStore()
+const taskCenter = useTaskCenterStore()
 const selectionController: IFileSelectionController = new DesktopFileSelectionController()
 const selection = shallowRef<FileSelectionSnapshot>(selectionController.snapshot)
 const history = ref<string[]>([])
@@ -69,12 +74,21 @@ const sort = reactive<{ key: SortKey; descending: boolean }>({ key: 'name', desc
 
 const editVisible = ref(false)
 const edit = reactive<{ mode: 'mkdir' | 'rename'; title: string; name: string }>({ mode: 'mkdir', title: '', name: '' })
+const editForm = ref<FormInstanceFunctions>()
+const editRules: FormRules = { name: remoteEntryNameRules }
 const moveVisible = ref(false)
 const movePath = ref('/')
 const moveEntries = ref<Entry[]>([])
 const moveLoading = ref(false)
 const deleteVisible = ref(false)
-const deleteConfirm = ref('')
+const deleteForm = reactive({ confirm_name: '' })
+const deleteFormRef = ref<FormInstanceFunctions>()
+const deleteRules: FormRules = {
+  confirm_name: [
+    { required: true, whitespace: true, message: '请输入完整文件夹名称', trigger: 'blur' },
+    { validator: (value) => value === singleSelection.value?.name, message: '输入的名称与文件夹名称不一致', trigger: 'blur' },
+  ],
+}
 const propertiesVisible = ref(false)
 const propertiesEntry = ref<Entry | null>(null)
 const pickerTargetPath = ref(props.mode === 'source' ? '' : '/')
@@ -92,7 +106,6 @@ const basePath = computed(() => isSource.value ? '' : normalizeRemotePath(profil
 const currentPath = computed(() => isSource.value ? library.path : files.path)
 const browserEntries = computed(() => isSource.value ? library.entries : files.entries)
 const browserLoading = computed(() => isSource.value ? library.loading : files.loading)
-const browserError = computed(() => isSource.value ? library.error : files.error)
 const browserReady = computed(() => isSource.value ? Boolean(library.rootId) : Boolean(files.profileId))
 const visibleEntries = computed(() => isPicker.value ? browserEntries.value.filter((entry) => entry.is_dir) : browserEntries.value)
 const selectedEntries = computed(() => {
@@ -102,6 +115,10 @@ const selectedEntries = computed(() => {
 const selectionCount = computed(() => isPicker.value ? 0 : selectedEntries.value.length)
 const selectedSize = computed(() => selectedEntries.value.reduce((total, entry) => total + (entry.is_dir ? 0 : entry.size), 0))
 const singleSelection = computed(() => selectedEntries.value.length === 1 ? selectedEntries.value[0] : null)
+const extractableArchive = computed(() => {
+  const entry = singleSelection.value
+  return entry && !entry.is_dir && /\.7z(?:\.001)?$/i.test(entry.name) ? entry : null
+})
 const canDelete = computed(() => selectedEntries.value.length === 1 || (selectedEntries.value.length > 1 && selectedEntries.value.every((entry) => !entry.is_dir)))
 const atBase = computed(() => currentPath.value === basePath.value)
 const canBack = computed(() => historyIndex.value > 0)
@@ -217,7 +234,6 @@ async function resetProfile(id: string) {
   historyIndex.value = -1
   if (!id) {
     files.entries = []
-    files.error = ''
     files.path = '/'
     return
   }
@@ -235,17 +251,26 @@ async function navigate(path: string, record = true) {
     const normalized = normalizeRemotePath(path || basePath.value)
     files.path = isInsideBase(normalized, basePath.value) ? normalized : basePath.value
   }
-  if (isSource.value) await library.load()
-  else await files.load()
+  const loaded = await loadBrowser()
+  if (!loaded) return
   if (isLocalPicker.value) {
     pickDirectoryPath(library.path)
   } else if (isDestination.value) {
     pickDirectoryPath(files.path)
   }
-  if (browserError.value || !record) return
+  if (!record) return
   history.value = history.value.slice(0, historyIndex.value + 1)
   if (history.value[history.value.length - 1] !== currentPath.value) history.value.push(currentPath.value)
   historyIndex.value = history.value.length - 1
+}
+
+async function loadBrowser() {
+  try {
+    return isSource.value ? await library.load() : await files.load()
+  } catch (error) {
+    await notifyError(error)
+    return false
+  }
 }
 
 async function goHistory(offset: number) {
@@ -326,7 +351,7 @@ function isPickerTarget(entry: Entry) {
 
 function toggleHidden() {
   library.hidden = !library.hidden
-  void library.load()
+  void loadBrowser()
 }
 
 function changeSort(key: SortKey) {
@@ -377,6 +402,7 @@ function validName(name: string) {
 }
 
 async function applyEdit() {
+  if (await editForm.value?.validate() !== true) return
   const name = edit.name.trim()
   if (!validName(name)) { await MessagePlugin.warning('名称不能为空，且不能包含 / 或 \\'); return }
   busy.value = true
@@ -394,7 +420,7 @@ async function applyEdit() {
     editVisible.value = false
     await MessagePlugin.success(edit.mode === 'mkdir' ? '文件夹已创建' : '名称已更新')
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { busy.value = false }
 }
 
@@ -406,7 +432,7 @@ async function loadMovePath(path: string) {
     movePath.value = result.path
     moveEntries.value = result.entries.filter((entry) => !selectedEntries.value.some((selected) => selected.is_dir && (entry.path === selected.path || entry.path.startsWith(`${selected.path}/`))))
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { moveLoading.value = false }
 }
 
@@ -428,7 +454,7 @@ async function applyMove() {
     await files.load()
     await MessagePlugin.success('已移动到目标文件夹')
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { busy.value = false }
 }
 
@@ -436,7 +462,7 @@ function askDelete() {
   if (!canDelete.value || isPicker.value) return
   const entries = [...selectedEntries.value]
   if (entries.length === 1 && entries[0].is_dir) {
-    deleteConfirm.value = ''
+    deleteForm.confirm_name = ''
     deleteVisible.value = true
     return
   }
@@ -453,7 +479,7 @@ function askDelete() {
         dialog.destroy()
         await MessagePlugin.success('文件已删除')
       } catch (error) {
-        await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+        await notifyError(error)
       } finally { busy.value = false }
     },
   })
@@ -461,18 +487,18 @@ function askDelete() {
 
 async function applyDirectoryDelete() {
   const entry = singleSelection.value
-  if (!entry || deleteConfirm.value !== entry.name || isPicker.value) return
+  if (!entry || isPicker.value || await deleteFormRef.value?.validate() !== true || deleteForm.confirm_name !== entry.name) return
   busy.value = true
   try {
-    const result = await files.operation({ action: 'delete', path: entry.path, is_dir: true, recursive: true, confirm_name: deleteConfirm.value })
+    const result = await files.operation({ action: 'delete', path: entry.path, is_dir: true, recursive: true, confirm_name: deleteForm.confirm_name })
     deleteVisible.value = false
     clearSelection()
     if (result.task) {
-      tasks.openCenter()
+      taskCenter.open('transfer', 'active')
       await MessagePlugin.warning('递归删除已加入任务中心')
     }
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { busy.value = false }
 }
 
@@ -522,6 +548,13 @@ function copyToFnOS() {
   const entries = [...selectedEntries.value]
   closeContextMenu()
   emit('copy-to-fnos', entries)
+}
+
+function extractArchive() {
+  if (!extractableArchive.value) return
+  const entry = extractableArchive.value
+  closeContextMenu()
+  emit('extract-archive', entry)
 }
 
 function openSelection() {
@@ -651,7 +684,7 @@ onBeforeUnmount(() => {
         <t-button variant="text" size="small" title="后退" aria-label="后退" :disabled="!canBack" @click="goHistory(-1)"><ArrowLeft :size="16" /></t-button>
         <t-button variant="text" size="small" title="前进" aria-label="前进" :disabled="!canForward" @click="goHistory(1)"><ArrowRight :size="16" /></t-button>
         <t-button variant="text" size="small" title="返回上级" aria-label="返回上级" :disabled="atBase" @click="goUp"><ArrowUp :size="16" /></t-button>
-        <t-button variant="text" size="small" title="刷新" aria-label="刷新" :disabled="!browserReady" @click="isSource ? library.load() : files.load()"><RefreshCw :size="15" /></t-button>
+        <t-button variant="text" size="small" title="刷新" aria-label="刷新" :disabled="!browserReady" @click="loadBrowser"><RefreshCw :size="15" /></t-button>
       </div>
       <nav class="station-breadcrumb" :aria-label="isSource ? 'fnOS 当前路径' : 'PS5 当前路径'" data-testid="ps5-breadcrumb">
         <template v-for="(crumb, index) in breadcrumbs" :key="crumb.path">
@@ -659,14 +692,15 @@ onBeforeUnmount(() => {
           <button :class="{ 'is-current': index === breadcrumbs.length - 1 }" @click="navigate(crumb.path)">{{ crumb.label }}</button>
         </template>
       </nav>
-      <t-input v-if="isSource" v-model="library.query" clearable placeholder="搜索当前文件夹" class="station-search" @enter="library.load()" @clear="library.load()" />
-      <t-input v-else v-model="files.query" clearable placeholder="搜索当前文件夹" class="station-search" @enter="clearSelection(); files.load()" @clear="files.load()" />
+      <t-input v-if="isSource" v-model="library.query" clearable placeholder="搜索当前文件夹" class="station-search" @enter="loadBrowser" @clear="loadBrowser" />
+      <t-input v-else v-model="files.query" clearable placeholder="搜索当前文件夹" class="station-search" @enter="clearSelection(); loadBrowser()" @clear="loadBrowser" />
     </div>
 
     <div v-if="!isPicker" class="station-actions">
       <template v-if="isSource && !isLocalPicker">
         <t-button variant="text" size="small" @click="toggleHidden"><component :is="library.hidden ? EyeOff : Eye" :size="15" />{{ library.hidden ? '隐藏文件已显示' : '显示隐藏文件' }}</t-button>
         <t-button v-if="selectionCount" variant="text" size="small" @click="clearSelection"><X :size="15" />清空选择</t-button>
+        <t-button variant="text" size="small" :disabled="!extractableArchive" @click="extractArchive"><ArchiveRestore :size="15" />解压</t-button>
         <t-button theme="primary" size="small" :disabled="!selectionCount" @click="copyToPS5"><Send :size="15" />复制到 PS5</t-button>
         <span class="selection-note">已选择 {{ selectionCount }} 项</span>
       </template>
@@ -682,10 +716,19 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
-    <t-alert v-if="browserError" theme="error" :message="browserError" class="station-error" />
-
     <div class="station-table-wrap" @click="handleTableBackgroundClick">
       <table :class="['station-table', { 'is-destination-table': isPicker }]">
+        <colgroup v-if="isPicker">
+          <col>
+          <col class="time-column">
+        </colgroup>
+        <colgroup v-else>
+          <col class="check-column">
+          <col>
+          <col class="type-column">
+          <col class="size-column">
+          <col class="time-column">
+        </colgroup>
         <thead>
           <tr v-if="isPicker">
             <th><button @click="changeSort('name')">目录名称 <span>{{ sortMark('name') }}</span></button></th>
@@ -741,6 +784,7 @@ onBeforeUnmount(() => {
     <div v-if="contextMenu.visible" ref="contextMenuElement" class="file-context-menu" role="menu" :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }" @click.stop @contextmenu.prevent @keydown.esc.stop="closeContextMenu()">
       <button role="menuitem" :disabled="!singleSelection" @click="openSelection"><FolderOpen :size="15" />打开</button>
       <template v-if="isSource">
+        <button role="menuitem" :disabled="!extractableArchive" @click="extractArchive"><ArchiveRestore :size="15" />解压到飞牛</button>
         <button role="menuitem" :disabled="!selectionCount" @click="copyToPS5"><Send :size="15" />复制到 PS5</button>
       </template>
       <template v-else>
@@ -754,8 +798,8 @@ onBeforeUnmount(() => {
   </Teleport>
 
   <t-dialog v-model:visible="editVisible" :header="edit.title" :confirm-btn="{ content: '确认', loading: busy }" @confirm="applyEdit">
-    <t-form label-align="top">
-      <t-form-item label="名称"><t-input v-model="edit.name" autofocus @enter="applyEdit" /></t-form-item>
+    <t-form ref="editForm" :data="edit" :rules="editRules" required-mark label-align="top">
+      <t-form-item name="name" label="名称"><t-input v-model="edit.name" autofocus @enter="applyEdit" /></t-form-item>
       <p class="dialog-path-hint">位置：{{ files.path }}</p>
     </t-form>
   </t-dialog>
@@ -789,10 +833,12 @@ onBeforeUnmount(() => {
       </div>
     </t-dialog>
 
-    <t-dialog v-model:visible="deleteVisible" header="永久删除文件夹" :confirm-btn="{ content: '永久删除', theme: 'danger', loading: busy, disabled: deleteConfirm !== singleSelection?.name }" @confirm="applyDirectoryDelete">
-      <t-alert theme="error" message="文件夹及其中的所有内容将永久删除。请输入文件夹名称进行确认。" />
-      <p class="dialog-hint">{{ singleSelection?.name }}</p>
-      <t-input v-model="deleteConfirm" placeholder="输入完整文件夹名称" />
+    <t-dialog v-model:visible="deleteVisible" header="永久删除文件夹" :confirm-btn="{ content: '永久删除', theme: 'danger', loading: busy, disabled: deleteForm.confirm_name !== singleSelection?.name }" @confirm="applyDirectoryDelete">
+      <t-form ref="deleteFormRef" :data="deleteForm" :rules="deleteRules" required-mark label-align="top">
+        <t-alert theme="error" message="文件夹及其中的所有内容将永久删除。请输入文件夹名称进行确认。" />
+        <p class="dialog-hint">{{ singleSelection?.name }}</p>
+        <t-form-item name="confirm_name" label="确认名称"><t-input v-model="deleteForm.confirm_name" placeholder="输入完整文件夹名称" /></t-form-item>
+      </t-form>
     </t-dialog>
   </template>
 </template>

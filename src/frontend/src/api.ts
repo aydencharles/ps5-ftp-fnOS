@@ -1,13 +1,71 @@
-export class ApiError extends Error { constructor(public status: number, message: string) { super(message) } }
+export enum BusinessCode {
+  Success = 0,
+  InvalidRequest = 1000,
+  ProfileNotFound = 1001,
+  ResourceNotFound = 1002,
+  ResourceConflict = 1003,
+  PS5OperationFailed = 2001,
+  InternalError = 9000,
+}
+
+export interface ApiEnvelope<T> {
+  code: number
+  message: string
+  data: T
+}
+
+export class ApiError<T = unknown> extends Error {
+  handled = false
+
+  constructor(
+    public status: number,
+    public code: number,
+    message: string,
+    public data: T | null,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+export type ApiErrorInterceptor = (error: ApiError) => boolean | void | Promise<boolean | void>
+
+let apiErrorInterceptor: ApiErrorInterceptor | null = null
+
+export function setApiErrorInterceptor(interceptor: ApiErrorInterceptor | null) {
+  apiErrorInterceptor = interceptor
+}
+
+function isEnvelope(value: unknown): value is ApiEnvelope<unknown> {
+  if (!value || typeof value !== 'object') return false
+  const envelope = value as Partial<ApiEnvelope<unknown>>
+  return typeof envelope.code === 'number' && typeof envelope.message === 'string' && 'data' in envelope
+}
+
+async function throwApiError(error: ApiError): Promise<never> {
+  if (apiErrorInterceptor) {
+    try {
+      error.handled = await apiErrorInterceptor(error) === true
+    } catch {
+      error.handled = false
+    }
+  }
+  throw error
+}
 
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
     headers: init?.body ? { 'Content-Type': 'application/json', ...init.headers } : init?.headers,
   })
-  const data = await response.json().catch(() => ({})) as T & { error?: string }
-  if (!response.ok) throw new ApiError(response.status, data.error || `HTTP ${response.status}`)
-  return data
+  const value = await response.json().catch(() => null) as unknown
+  if (!isEnvelope(value)) {
+    return throwApiError(new ApiError(response.status, BusinessCode.InternalError, '服务响应格式错误', null))
+  }
+  if (!response.ok || value.code !== BusinessCode.Success) {
+    return throwApiError(new ApiError(response.status, value.code || BusinessCode.InternalError, value.message || `HTTP ${response.status}`, value.data))
+  }
+  return value.data as T
 }
 
 export const parentPath = (value: string) => {

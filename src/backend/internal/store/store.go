@@ -17,7 +17,12 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/domain"
+)
+
+var (
+	ErrProfileNotFound = errors.New("profile not found")
+	ErrStateConflict   = errors.New("resource state conflict")
 )
 
 type Store struct {
@@ -118,7 +123,24 @@ CREATE TABLE IF NOT EXISTS task_events(
 );
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 INSERT OR IGNORE INTO settings(key,value) VALUES('transfer_workers','2');`
-	_, err := s.db.Exec(schema)
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+	const extractionSchema = `
+CREATE TABLE IF NOT EXISTS extraction_tasks(
+ id TEXT PRIMARY KEY,
+ source_root_id TEXT NOT NULL, source_path TEXT NOT NULL,
+ destination_root_id TEXT NOT NULL, destination_parent TEXT NOT NULL, destination_path TEXT NOT NULL,
+ delete_sources INTEGER NOT NULL DEFAULT 0, password_cipher TEXT NOT NULL DEFAULT '',
+ state TEXT NOT NULL, total_bytes INTEGER NOT NULL DEFAULT 0, extracted_bytes INTEGER NOT NULL DEFAULT 0,
+ speed_bytes REAL NOT NULL DEFAULT 0, eta_seconds INTEGER, current_file TEXT NOT NULL DEFAULT '',
+ total_items INTEGER NOT NULL DEFAULT 0, completed_items INTEGER NOT NULL DEFAULT 0,
+ error TEXT NOT NULL DEFAULT '', warning TEXT NOT NULL DEFAULT '', retry_of TEXT NOT NULL DEFAULT '',
+ created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_extraction_tasks_state_created ON extraction_tasks(state,created_at);
+UPDATE schema_version SET version=2 WHERE version<2;`
+	_, err := s.db.Exec(extractionSchema)
 	return err
 }
 
@@ -162,14 +184,23 @@ func (s *Store) decrypt(encoded string) (string, error) {
 }
 
 func (s *Store) SaveProfile(ctx context.Context, p domain.Profile) (domain.Profile, error) {
-	if p.ID == "" {
+	creating := p.ID == ""
+	if creating {
 		p.ID = newID()
 	}
 	if p.BasePath == "" {
 		p.BasePath = "/"
 	}
 	var existingCipher string
-	_ = s.db.QueryRowContext(ctx, "SELECT password_cipher FROM profiles WHERE id=?", p.ID).Scan(&existingCipher)
+	if !creating {
+		err := s.db.QueryRowContext(ctx, "SELECT password_cipher FROM profiles WHERE id=?", p.ID).Scan(&existingCipher)
+		if errors.Is(err, sql.ErrNoRows) {
+			return p, ErrProfileNotFound
+		}
+		if err != nil {
+			return p, err
+		}
+	}
 	ciphertext := existingCipher
 	if p.Password != "" || ciphertext == "" {
 		var err error
@@ -179,12 +210,25 @@ func (s *Store) SaveProfile(ctx context.Context, p domain.Profile) (domain.Profi
 		}
 	}
 	t := now()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO profiles(id,name,host,port,username,password_cipher,base_path,preset,created_at,updated_at)
-VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,host=excluded.host,port=excluded.port,
-username=excluded.username,password_cipher=excluded.password_cipher,base_path=excluded.base_path,preset=excluded.preset,updated_at=excluded.updated_at`,
-		p.ID, p.Name, p.Host, p.Port, p.Username, ciphertext, p.BasePath, p.Preset, t, t)
+	if creating {
+		_, err := s.db.ExecContext(ctx, `INSERT INTO profiles(id,name,host,port,username,password_cipher,base_path,preset,created_at,updated_at)
+VALUES(?,?,?,?,?,?,?,?,?,?)`, p.ID, p.Name, p.Host, p.Port, p.Username, ciphertext, p.BasePath, p.Preset, t, t)
+		if err != nil {
+			return p, err
+		}
+		return s.Profile(ctx, p.ID, false)
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE profiles SET name=?,host=?,port=?,username=?,password_cipher=?,base_path=?,preset=?,updated_at=? WHERE id=?`,
+		p.Name, p.Host, p.Port, p.Username, ciphertext, p.BasePath, p.Preset, t, p.ID)
 	if err != nil {
 		return p, err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return p, err
+	}
+	if updated == 0 {
+		return p, ErrProfileNotFound
 	}
 	return s.Profile(ctx, p.ID, false)
 }
@@ -205,7 +249,11 @@ func scanProfile(row interface{ Scan(...any) error }, includeSecret bool, s *Sto
 
 func (s *Store) Profile(ctx context.Context, id string, includeSecret bool) (domain.Profile, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id,name,host,port,username,password_cipher,base_path,preset,created_at,updated_at FROM profiles WHERE id=?`, id)
-	return scanProfile(row, includeSecret, s)
+	p, err := scanProfile(row, includeSecret, s)
+	if errors.Is(err, sql.ErrNoRows) {
+		return p, ErrProfileNotFound
+	}
+	return p, err
 }
 
 func (s *Store) Profiles(ctx context.Context) ([]domain.Profile, error) {
@@ -226,8 +274,18 @@ func (s *Store) Profiles(ctx context.Context) ([]domain.Profile, error) {
 }
 
 func (s *Store) DeleteProfile(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM profiles WHERE id=?", id)
-	return err
+	result, err := s.db.ExecContext(ctx, "DELETE FROM profiles WHERE id=?", id)
+	if err != nil {
+		return err
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if deleted == 0 {
+		return ErrProfileNotFound
+	}
+	return nil
 }
 
 func (s *Store) UpsertRoot(ctx context.Context, r domain.LibraryRoot) error {
@@ -464,8 +522,19 @@ func (s *Store) IsCanceling(ctx context.Context, id string) bool {
 	return state == domain.TaskCanceling
 }
 func (s *Store) MarkCanceling(ctx context.Context, id string) error {
-	_, e := s.db.ExecContext(ctx, "UPDATE tasks SET state=? WHERE id=? AND state IN (?,?)", domain.TaskCanceling, id, domain.TaskScanning, domain.TaskRunning)
-	return e
+	result, err := s.db.ExecContext(ctx, "UPDATE tasks SET state=? WHERE id=? AND state IN (?,?)", domain.TaskCanceling, id, domain.TaskScanning, domain.TaskRunning)
+	if err != nil {
+		return err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil || updated > 0 {
+		return err
+	}
+	var state string
+	if err = s.db.QueryRowContext(ctx, "SELECT state FROM tasks WHERE id=?", id).Scan(&state); err != nil {
+		return err
+	}
+	return fmt.Errorf("%w: task in state %s cannot be canceled", ErrStateConflict, state)
 }
 func (s *Store) DeleteTask(ctx context.Context, id string) error {
 	result, err := s.db.ExecContext(ctx, "DELETE FROM tasks WHERE id=? AND state IN (?,?,?,?)", id, domain.TaskSucceeded, domain.TaskFailed, domain.TaskCanceled, domain.TaskInterrupted)
@@ -483,7 +552,7 @@ func (s *Store) DeleteTask(ctx context.Context, id string) error {
 	if err = s.db.QueryRowContext(ctx, "SELECT state FROM tasks WHERE id=?", id).Scan(&state); err != nil {
 		return err
 	}
-	return fmt.Errorf("task in state %s is not a history record", state)
+	return fmt.Errorf("%w: task in state %s is not a history record", ErrStateConflict, state)
 }
 
 func NormalizeRemotePath(v string) (string, error) {

@@ -15,23 +15,28 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/domain"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/ftpclient"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/library"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/queue"
-	"github.com/chenpy/ps5-ftp-fnos/src/backend/internal/store"
+	"github.com/go-playground/validator/v10"
+
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/domain"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/extractqueue"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/ftpclient"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/library"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/queue"
+	"github.com/aydencharles/ps5-ftp-fnOS/src/backend/internal/store"
 )
 
 type Server struct {
-	store   *store.Store
-	library *library.Library
-	queue   *queue.Manager
-	uiDir   string
-	mux     *http.ServeMux
+	store     *store.Store
+	library   *library.Library
+	queue     *queue.Manager
+	extract   *extractqueue.Manager
+	validator *validator.Validate
+	uiDir     string
+	mux       *http.ServeMux
 }
 
-func New(s *store.Store, l *library.Library, q *queue.Manager, uiDir string) *Server {
-	v := &Server{store: s, library: l, queue: q, uiDir: uiDir, mux: http.NewServeMux()}
+func New(s *store.Store, l *library.Library, q *queue.Manager, extract *extractqueue.Manager, uiDir string) *Server {
+	v := &Server{store: s, library: l, queue: q, extract: extract, validator: newRequestValidator(), uiDir: uiDir, mux: http.NewServeMux()}
 	v.routes()
 	return v
 }
@@ -42,23 +47,36 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/bootstrap", s.bootstrap)
 	s.mux.HandleFunc("GET /api/v1/profiles", s.listProfiles)
 	s.mux.HandleFunc("POST /api/v1/profiles", s.saveProfile)
-	s.mux.HandleFunc("PUT /api/v1/profiles/{id}", s.saveProfile)
-	s.mux.HandleFunc("DELETE /api/v1/profiles/{id}", s.deleteProfile)
-	s.mux.HandleFunc("POST /api/v1/profiles/{id}/test", s.testProfile)
+	s.mux.HandleFunc("PUT /api/v1/profiles/{id}", s.withValidID(s.saveProfile))
+	s.mux.HandleFunc("DELETE /api/v1/profiles/{id}", s.withValidID(s.deleteProfile))
+	s.mux.HandleFunc("POST /api/v1/profiles/{id}/test", s.withValidID(s.testProfile))
 	s.mux.HandleFunc("GET /api/v1/library/roots", s.roots)
 	s.mux.HandleFunc("GET /api/v1/library/entries", s.localEntries)
-	s.mux.HandleFunc("GET /api/v1/ps5/{id}/entries", s.remoteEntries)
-	s.mux.HandleFunc("POST /api/v1/ps5/{id}/operations", s.remoteOperation)
+	s.mux.HandleFunc("GET /api/v1/ps5/{id}/entries", s.withValidID(s.remoteEntries))
+	s.mux.HandleFunc("POST /api/v1/ps5/{id}/operations", s.withValidID(s.remoteOperation))
 	s.mux.HandleFunc("GET /api/v1/tasks", s.listTasks)
 	s.mux.HandleFunc("POST /api/v1/tasks", s.createTask)
-	s.mux.HandleFunc("GET /api/v1/tasks/{id}", s.getTask)
-	s.mux.HandleFunc("DELETE /api/v1/tasks/{id}", s.deleteTask)
-	s.mux.HandleFunc("POST /api/v1/tasks/{id}/cancel", s.cancelTask)
-	s.mux.HandleFunc("POST /api/v1/tasks/{id}/retry", s.retryTask)
+	s.mux.HandleFunc("GET /api/v1/tasks/{id}", s.withValidID(s.getTask))
+	s.mux.HandleFunc("DELETE /api/v1/tasks/{id}", s.withValidID(s.deleteTask))
+	s.mux.HandleFunc("POST /api/v1/tasks/{id}/cancel", s.withValidID(s.cancelTask))
+	s.mux.HandleFunc("POST /api/v1/tasks/{id}/retry", s.withValidID(s.retryTask))
 	s.mux.HandleFunc("GET /api/v1/events", s.events)
+	s.mux.HandleFunc("GET /api/v1/extraction-tasks", s.listExtractionTasks)
+	s.mux.HandleFunc("POST /api/v1/extraction-tasks", s.createExtractionTask)
+	s.mux.HandleFunc("GET /api/v1/extraction-tasks/{id}", s.withValidID(s.getExtractionTask))
+	s.mux.HandleFunc("DELETE /api/v1/extraction-tasks/{id}", s.withValidID(s.deleteExtractionTask))
+	s.mux.HandleFunc("POST /api/v1/extraction-tasks/{id}/cancel", s.withValidID(s.cancelExtractionTask))
+	s.mux.HandleFunc("POST /api/v1/extraction-tasks/{id}/retry", s.withValidID(s.retryExtractionTask))
+	s.mux.HandleFunc("GET /api/v1/extraction-events", s.extractionEvents)
 	s.mux.HandleFunc("GET /api/v1/settings", s.settings)
 	s.mux.HandleFunc("PUT /api/v1/settings", s.updateSettings)
+	s.mux.HandleFunc("/api/v1", s.apiNotFound)
+	s.mux.HandleFunc("/api/v1/", s.apiNotFound)
 	s.mux.Handle("/", spaHandler(s.uiDir))
+}
+
+func (s *Server) apiNotFound(w http.ResponseWriter, _ *http.Request) {
+	businessResponse(w, codeResourceNotFound, messageResourceNotFound, nil)
 }
 
 func securityHeaders(next http.Handler) http.Handler {
@@ -77,20 +95,26 @@ func jsonResponse(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
-func fail(w http.ResponseWriter, status int, err error) {
-	jsonResponse(w, status, map[string]any{"ok": false, "error": err.Error()})
-}
 func decode(r *http.Request, v any) error {
 	d := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	d.DisallowUnknownFields()
-	return d.Decode(v)
+	if err := d.Decode(v); err != nil {
+		return err
+	}
+	if err := d.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("请求体只能包含一个 JSON 对象")
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 	if err := s.store.Ping(ctx); err != nil {
-		fail(w, 503, err)
+		jsonResponse(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "error": "database unavailable"})
 		return
 	}
 	jsonResponse(w, 200, map[string]any{"ok": true, "database": "ready", "time": time.Now().UTC()})
@@ -101,8 +125,17 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	tasks, _ := s.store.Tasks(r.Context())
-	jsonResponse(w, 200, map[string]any{"ok": true, "name": "PS5 FTP Manager", "version": "0.2.0", "profiles": profiles, "library_roots": s.library.Roots(), "tasks": tasks, "settings": map[string]any{"transfer_workers": s.store.Workers(r.Context())}})
+	tasks, err := s.store.Tasks(r.Context())
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	extractions, err := s.store.ExtractionTasks(r.Context())
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	successResponse(w, map[string]any{"name": "PS5 FTP Manager", "version": "0.3.0", "profiles": profiles, "library_roots": s.library.Roots(), "tasks": tasks, "extraction_tasks": extractions, "settings": map[string]any{"transfer_workers": s.store.Workers(r.Context())}})
 }
 func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 	v, err := s.store.Profiles(r.Context())
@@ -110,38 +143,29 @@ func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true, "profiles": v})
+	successResponse(w, map[string]any{"profiles": v})
 }
 
 func validateProfile(p *domain.Profile) error {
-	p.Name = strings.TrimSpace(p.Name)
-	p.Host = strings.TrimSpace(p.Host)
-	p.Username = strings.TrimSpace(p.Username)
-	if p.Name == "" || p.Host == "" {
-		return errors.New("name and host are required")
-	}
-	if p.Port < 1 || p.Port > 65535 {
-		return errors.New("port must be between 1 and 65535")
-	}
 	base, err := store.NormalizeRemotePath(p.BasePath)
 	if err != nil {
 		return err
 	}
 	p.BasePath = base
-	if p.Preset == "" {
-		p.Preset = "custom"
-	}
 	return nil
 }
 func (s *Server) saveProfile(w http.ResponseWriter, r *http.Request) {
-	var p domain.Profile
-	if err := decode(r, &p); err != nil {
+	var body profileRequest
+	if err := decode(r, &body); err != nil {
 		fail(w, 400, err)
 		return
 	}
-	if id := r.PathValue("id"); id != "" {
-		p.ID = id
+	body.normalize()
+	if err := s.validateRequest(body); err != nil {
+		fail(w, 400, err)
+		return
 	}
+	p := body.profile(r.PathValue("id"))
 	if err := validateProfile(&p); err != nil {
 		fail(w, 400, err)
 		return
@@ -151,14 +175,14 @@ func (s *Server) saveProfile(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true, "profile": saved})
+	successResponse(w, map[string]any{"profile": saved})
 }
 func (s *Server) deleteProfile(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.DeleteProfile(r.Context(), r.PathValue("id")); err != nil {
-		fail(w, 409, err)
+		fail(w, 500, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true})
+	successResponse(w, nil)
 }
 func (s *Server) testProfile(w http.ResponseWriter, r *http.Request) {
 	p, err := s.store.Profile(r.Context(), r.PathValue("id"), true)
@@ -166,11 +190,11 @@ func (s *Server) testProfile(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, err)
 		return
 	}
-	jsonResponse(w, 200, ftpclient.Probe(r.Context(), p))
+	successResponse(w, ftpclient.Probe(r.Context(), p))
 }
 
 func (s *Server) roots(w http.ResponseWriter, r *http.Request) {
-	jsonResponse(w, 200, map[string]any{"ok": true, "roots": s.library.Roots()})
+	successResponse(w, map[string]any{"roots": s.library.Roots()})
 }
 func (s *Server) localEntries(w http.ResponseWriter, r *http.Request) {
 	hidden := r.URL.Query().Get("hidden") == "1"
@@ -179,7 +203,7 @@ func (s *Server) localEntries(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true, "entries": entries, "path": r.URL.Query().Get("path")})
+	successResponse(w, map[string]any{"entries": entries, "path": r.URL.Query().Get("path")})
 }
 
 func remotePathFor(p domain.Profile, requested string) (string, error) {
@@ -208,7 +232,7 @@ func (s *Server) withFTP(r *http.Request, fn func(domain.Profile, *ftpclient.Cli
 	defer cancel()
 	c, err := ftpclient.Dial(ctx, p)
 	if err != nil {
-		return err
+		return ps5OperationError(err)
 	}
 	defer c.Close()
 	return fn(p, c)
@@ -220,11 +244,11 @@ func (s *Server) remoteEntries(w http.ResponseWriter, r *http.Request) {
 		var err error
 		current, err = remotePathFor(p, r.URL.Query().Get("path"))
 		if err != nil {
-			return err
+			return invalidRequestError(err)
 		}
 		entries, err = c.List(current)
 		if err != nil {
-			return err
+			return ps5OperationError(err)
 		}
 		query := strings.ToLower(r.URL.Query().Get("query"))
 		if query != "" {
@@ -246,21 +270,17 @@ func (s *Server) remoteEntries(w http.ResponseWriter, r *http.Request) {
 		fail(w, 502, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true, "entries": entries, "path": current})
-}
-
-type operationRequest struct {
-	Action      string `json:"action"`
-	Path        string `json:"path"`
-	Destination string `json:"destination,omitempty"`
-	Recursive   bool   `json:"recursive,omitempty"`
-	ConfirmName string `json:"confirm_name,omitempty"`
-	IsDir       bool   `json:"is_dir,omitempty"`
+	successResponse(w, map[string]any{"entries": entries, "path": current})
 }
 
 func (s *Server) remoteOperation(w http.ResponseWriter, r *http.Request) {
 	var body operationRequest
 	if err := decode(r, &body); err != nil {
+		fail(w, 400, err)
+		return
+	}
+	body.normalize()
+	if err := s.validateRequest(body); err != nil {
 		fail(w, 400, err)
 		return
 	}
@@ -284,40 +304,46 @@ func (s *Server) remoteOperation(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, err)
 			return
 		}
-		jsonResponse(w, http.StatusAccepted, map[string]any{"ok": true, "task": task})
+		successResponse(w, map[string]any{"task": task})
 		return
 	}
 	err := s.withFTP(r, func(p domain.Profile, c *ftpclient.Client) error {
 		src, err := remotePathFor(p, body.Path)
 		if err != nil {
-			return err
+			return invalidRequestError(err)
 		}
+		var operationErr error
 		switch body.Action {
 		case "mkdir":
-			return c.MakeDir(src)
+			operationErr = c.MakeDir(src)
 		case "rename", "move":
 			dst, err := remotePathFor(p, body.Destination)
 			if err != nil {
-				return err
+				return invalidRequestError(err)
 			}
-			return c.Rename(src, dst)
+			operationErr = c.Rename(src, dst)
 		case "delete":
 			if body.Recursive && body.ConfirmName != path.Base(src) {
-				return errors.New("confirmation name does not match")
+				return invalidRequestError(errors.New("confirmation name does not match"))
 			}
 			if body.IsDir {
-				return c.RemoveDir(src, body.Recursive)
+				operationErr = c.RemoveDir(src, body.Recursive)
+			} else {
+				operationErr = c.Delete(src)
 			}
-			return c.Delete(src)
 		default:
-			return errors.New("unsupported operation")
+			return invalidRequestError(errors.New("unsupported operation"))
 		}
+		if operationErr != nil {
+			return ps5OperationError(operationErr)
+		}
+		return nil
 	})
 	if err != nil {
-		fail(w, 400, err)
+		fail(w, 502, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true})
+	successResponse(w, nil)
 }
 
 func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
@@ -326,27 +352,25 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true, "tasks": tasks})
+	successResponse(w, map[string]any{"tasks": tasks})
 }
 func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
-	var t domain.Task
-	if err := decode(r, &t); err != nil {
+	var body taskRequest
+	if err := decode(r, &body); err != nil {
 		fail(w, 400, err)
 		return
 	}
-	if len(t.Sources) == 0 {
-		fail(w, 400, errors.New("at least one source is required"))
+	body.normalize()
+	if err := s.validateRequest(body); err != nil {
+		fail(w, 400, err)
 		return
 	}
-	if !domain.ValidConflictPolicy(t.ConflictPolicy) {
-		fail(w, 400, errors.New("invalid conflict policy"))
+	t := body.task()
+	profile, err := s.store.Profile(r.Context(), t.ProfileID, false)
+	if err != nil {
+		fail(w, 400, err)
 		return
 	}
-	if _, err := s.store.Profile(r.Context(), t.ProfileID, false); err != nil {
-		fail(w, 400, errors.New("unknown profile"))
-		return
-	}
-	profile, _ := s.store.Profile(r.Context(), t.ProfileID, false)
 	switch t.Type {
 	case "", "upload":
 		t.Type = "upload"
@@ -396,7 +420,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	jsonResponse(w, 201, map[string]any{"ok": true, "task": saved})
+	successResponse(w, map[string]any{"task": saved})
 }
 func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 	t, err := s.store.Task(r.Context(), r.PathValue("id"))
@@ -404,23 +428,31 @@ func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, err)
 		return
 	}
-	items, _ := s.store.Items(r.Context(), t.ID)
-	events, _ := s.store.Events(r.Context(), t.ID)
-	jsonResponse(w, 200, map[string]any{"ok": true, "task": t, "items": items, "events": events})
+	items, err := s.store.Items(r.Context(), t.ID)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	events, err := s.store.Events(r.Context(), t.ID)
+	if err != nil {
+		fail(w, 500, err)
+		return
+	}
+	successResponse(w, map[string]any{"task": t, "items": items, "events": events})
 }
 func (s *Server) deleteTask(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.DeleteTask(r.Context(), r.PathValue("id")); err != nil {
 		fail(w, 409, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true})
+	successResponse(w, nil)
 }
 func (s *Server) cancelTask(w http.ResponseWriter, r *http.Request) {
 	if err := s.queue.Cancel(r.Context(), r.PathValue("id")); err != nil {
 		fail(w, 409, err)
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"ok": true})
+	successResponse(w, nil)
 }
 func (s *Server) retryTask(w http.ResponseWriter, r *http.Request) {
 	old, err := s.store.Task(r.Context(), r.PathValue("id"))
@@ -429,7 +461,7 @@ func (s *Server) retryTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if old.State == domain.TaskQueued || old.State == domain.TaskScanning || old.State == domain.TaskRunning || old.State == domain.TaskCanceling {
-		fail(w, 409, errors.New("active task cannot be retried"))
+		fail(w, 409, resourceConflictError(errors.New("active task cannot be retried")))
 		return
 	}
 	old.ID = ""
@@ -443,7 +475,7 @@ func (s *Server) retryTask(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err)
 		return
 	}
-	jsonResponse(w, 201, map[string]any{"ok": true, "task": saved})
+	successResponse(w, map[string]any{"task": saved})
 }
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
@@ -480,18 +512,20 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
-	jsonResponse(w, 200, map[string]any{"ok": true, "transfer_workers": s.store.Workers(r.Context())})
+	successResponse(w, map[string]any{"transfer_workers": s.store.Workers(r.Context())})
 }
 func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		TransferWorkers int `json:"transfer_workers"`
-	}
+	var body settingsRequest
 	if err := decode(r, &body); err != nil {
 		fail(w, 400, err)
 		return
 	}
-	if err := s.store.SetWorkers(r.Context(), body.TransferWorkers); err != nil {
+	if err := s.validateRequest(body); err != nil {
 		fail(w, 400, err)
+		return
+	}
+	if err := s.store.SetWorkers(r.Context(), body.TransferWorkers); err != nil {
+		fail(w, 500, err)
 		return
 	}
 	s.settings(w, r)

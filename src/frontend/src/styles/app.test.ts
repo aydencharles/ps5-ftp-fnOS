@@ -3,6 +3,10 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const styles = readFileSync(resolve(process.cwd(), 'src/styles/app.less'), 'utf8')
+const mobileStyles = styles.slice(
+  styles.indexOf('@media (max-width: 600px)'),
+  styles.indexOf('@media (prefers-reduced-motion: reduce)'),
+)
 
 describe('global UI standards', () => {
   it('keeps the button-size illustration visible', () => {
@@ -27,5 +31,38 @@ describe('global UI standards', () => {
       expect(rule).toContain('var(--ui-button-padding-x)')
       expect(rule).toContain('var(--ui-button-font-size)')
     }
+  })
+
+  it('keeps dense workbench content inside a phone viewport', () => {
+    expect(mobileStyles).toMatch(/\.station-actions \{[^}]*flex-wrap: wrap/)
+    expect(mobileStyles).toMatch(/\.station-table \{[^}]*min-width: 0/)
+    expect(mobileStyles).toMatch(/\.station-table \.type-column, \.station-table \.time-column \{[^}]*width: 0[^}]*overflow: hidden[^}]*visibility: hidden/)
+    expect(mobileStyles).not.toMatch(/\.station-table \.type-column, \.station-table \.time-column \{[^}]*display: none/)
+    expect(mobileStyles).not.toContain('min-width: 560px')
+  })
+
+  it('stacks settings and forms into a single mobile column', () => {
+    expect(mobileStyles).toMatch(/\.settings-section \{[^}]*grid-template-columns: 1fr/)
+    expect(mobileStyles).toMatch(/\.profile-row \{[^}]*minmax\(0, 1fr\)/)
+    expect(mobileStyles).toMatch(/\.form-grid \{[^}]*grid-template-columns: 1fr/)
+  })
+
+  it('keeps settings section endings visually consistent', () => {
+    expect(styles).toMatch(/\.profile-row:last-child \{ border-bottom: 0; \}/)
+    expect(styles).toMatch(/\.settings-body > \.t-slider__container \{ margin: 24px 12px 6px; \}/)
+    expect(mobileStyles).toMatch(/\.profile-row:last-child \{ padding-bottom: 0; \}/)
+    expect(mobileStyles).toMatch(/\.settings-body > \.t-slider__container \{ margin-bottom: 26px; \}/)
+  })
+
+  it('keeps form validation messages in document flow', () => {
+    expect(styles).toMatch(/\.t-form \.t-form__controls > \.t-input__extra \{[^}]*position: static/)
+  })
+
+  it('keeps the local directory list as the picker flexible row', () => {
+    expect(styles).toMatch(/\.local-directory-picker \{[^}]*grid-template-rows: auto minmax\(120px, 1fr\) auto/)
+  })
+
+  it('does not add a left accent border to active task-center items', () => {
+    expect(styles).not.toMatch(/\.task-center-item\.is-(?:running|scanning)[^}]*border-left/)
   })
 })

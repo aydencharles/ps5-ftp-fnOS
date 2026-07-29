@@ -2,19 +2,25 @@
 import { computed, ref, watch } from 'vue'
 import { ArrowRight } from '@lucide/vue'
 import { MessagePlugin } from 'tdesign-vue-next'
-import { formatBytes } from '../api'
+import type { FormInstanceFunctions, FormRules } from 'tdesign-vue-next'
+import { formatBytes, parentPath } from '../api'
+import { notifyError } from '../errorFeedback'
 import BrowserDeviceBar from '../components/BrowserDeviceBar.vue'
 import FileBrowser from '../components/FileBrowser.vue'
+import LocalDirectoryPicker from '../components/LocalDirectoryPicker.vue'
 import FnOSIcon from '../components/FnOSIcon.vue'
 import PlayStationIcon from '../components/PlayStationIcon.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
 import { useTasksStore } from '../stores/tasks'
-import type { SourceLocator } from '../types'
+import { useExtractionTasksStore } from '../stores/extractions'
+import type { Entry, SourceLocator } from '../types'
+import { optionalPasswordRules } from '../formValidation'
 
 const library = useLibraryStore()
 const profiles = useProfilesStore()
 const tasks = useTasksStore()
+const extractions = useExtractionTasksStore()
 type ConflictPolicy = 'smart' | 'overwrite' | 'fail'
 
 const destination = ref('/')
@@ -23,6 +29,16 @@ const confirmVisible = ref(false)
 const submitting = ref(false)
 const conflict = ref<ConflictPolicy>('smart')
 const selectedSources = ref<SourceLocator[]>([])
+const extractVisible = ref(false)
+const extractSubmitting = ref(false)
+const extractSource = ref<Entry | null>(null)
+const extractSourceLocator = ref<SourceLocator | null>(null)
+const extractDestination = ref<SourceLocator | null>(null)
+const extractPassword = ref('')
+const deleteSources = ref(false)
+const extractionForm = ref<FormInstanceFunctions>()
+const extractionFormData = computed(() => ({ password: extractPassword.value }))
+const extractionRules: FormRules = { password: optionalPasswordRules }
 
 const currentRootLabel = computed(() => library.roots.find((root) => root.id === library.rootId)?.label || 'fnOS')
 const selectedEntries = computed(() => selectedSources.value.map((locator) => library.entries.find((entry) => entry.path === locator.path)).filter(Boolean))
@@ -35,6 +51,7 @@ const selectedLabel = computed(() => {
 })
 const profileLabel = computed(() => profiles.selected?.name || '尚未选择 PS5')
 const conflictLabel = computed(() => ({ smart: '智能处理同名文件', overwrite: '全部重新上传', fail: '遇到同名文件停止' })[conflict.value])
+const extractionFolderName = computed(() => extractSource.value?.name.replace(/\.7z(?:\.001)?$/i, '') || '')
 
 watch(() => profiles.selectedId, () => {
   destination.value = profiles.selected?.base_path || '/'
@@ -61,8 +78,36 @@ async function submit() {
     confirmVisible.value = false
     await MessagePlugin.success(`任务 ${task.id.slice(0, 8)} 已加入队列`)
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    await notifyError(error)
   } finally { submitting.value = false }
+}
+
+function openExtraction(entry: Entry) {
+  extractSource.value = entry
+  extractSourceLocator.value = { root_id: library.rootId, path: entry.path }
+  extractDestination.value = { root_id: library.rootId, path: parentPath(entry.path) }
+  extractPassword.value = ''
+  deleteSources.value = false
+  extractVisible.value = true
+}
+
+async function submitExtraction() {
+  if (!extractSourceLocator.value || !extractDestination.value) return
+  if (await extractionForm.value?.validate() !== true) return
+  extractSubmitting.value = true
+  try {
+    const task = await extractions.create(
+      extractSourceLocator.value,
+      extractDestination.value,
+      extractPassword.value,
+      deleteSources.value,
+    )
+    extractPassword.value = ''
+    extractVisible.value = false
+    await MessagePlugin.success(`解压任务 ${task.id.slice(0, 8)} 已加入队列`)
+  } catch (error) {
+    await notifyError(error)
+  } finally { extractSubmitting.value = false }
 }
 </script>
 
@@ -73,7 +118,7 @@ async function submit() {
         <template #icon><FnOSIcon :size="18" /></template>
         <template #control><t-select v-model="library.rootId" :options="library.storageRoots.map(root => ({ label: root.label, value: root.id }))" placeholder="选择存储空间" class="location-select devicebar-select" /></template>
       </BrowserDeviceBar>
-      <FileBrowser v-model:selected-sources="selectedSources" mode="source" compact @copy-to-ps5="openCopyToPS5" />
+      <FileBrowser v-model:selected-sources="selectedSources" mode="source" compact @copy-to-ps5="openCopyToPS5" @extract-archive="openExtraction" />
     </div>
   </section>
 
@@ -106,6 +151,17 @@ async function submit() {
           <t-radio value="fail">停止任务</t-radio>
         </t-radio-group>
       </div>
+    </div>
+  </t-dialog>
+
+  <t-dialog v-model:visible="extractVisible" dialog-class-name="transfer-picker-dialog" header="解压到飞牛" width="760px" :confirm-btn="{ content: '创建解压任务', loading: extractSubmitting, disabled: !extractDestination }" @confirm="submitExtraction" @close="extractPassword = ''">
+    <div v-if="extractSource && extractDestination" class="extraction-dialog">
+      <t-alert theme="info" :message="`将 ${extractSource.name} 解压为新文件夹 ${extractionFolderName}；目标已存在时不会覆盖。`" />
+      <LocalDirectoryPicker :initial="extractDestination" @change="extractDestination = $event" />
+      <t-form ref="extractionForm" :data="extractionFormData" :rules="extractionRules" required-mark label-align="top">
+        <t-form-item name="password" label="压缩包密码（没有密码可留空）"><t-input v-model="extractPassword" type="password" autocomplete="off" clearable /></t-form-item>
+        <t-checkbox v-model="deleteSources">解压成功后删除全部源分卷</t-checkbox>
+      </t-form>
     </div>
   </t-dialog>
 </template>
