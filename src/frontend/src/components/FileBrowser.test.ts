@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MessagePlugin } from 'tdesign-vue-next'
 import FileBrowser from './FileBrowser.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
@@ -54,6 +55,7 @@ describe('File Browser', () => {
   const requests: Array<{ url: string; method: string; body?: Record<string, unknown> }> = []
 
   beforeEach(() => {
+    vi.clearAllMocks()
     requests.length = 0
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -126,6 +128,20 @@ describe('File Browser', () => {
     expect(breadcrumb.text()).not.toContain('//')
     expect(wrapper.findAll('tbody tr[data-entry-path]').map((row) => row.attributes('data-entry-path'))).toEqual(['/data/homebrew/Games'])
     expect(wrapper.text()).not.toContain('eboot.bin')
+  })
+
+  it('shows PS5 connection failures as a global message instead of page content', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      json: async () => ({ error: '无法连接到 PS5' }),
+    } as Response)
+
+    const wrapper = mountDestination()
+    await flushPromises()
+
+    expect(MessagePlugin.error).toHaveBeenCalledWith('无法连接到 PS5')
+    expect(wrapper.text()).not.toContain('无法连接到 PS5')
   })
 
   it('uses the directory currently being browsed as the destination', async () => {

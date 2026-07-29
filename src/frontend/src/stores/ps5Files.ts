@@ -3,16 +3,15 @@ import { api } from '../api'
 import type { Entry } from '../types'
 
 export const usePS5FilesStore = defineStore('ps5Files', {
-  state: () => ({ profileId: '', path: '/', entries: [] as Entry[], query: '', loading: false, error: '', requestId: 0 }),
+  state: () => ({ profileId: '', path: '/', entries: [] as Entry[], query: '', loading: false, requestId: 0 }),
   actions: {
     async load() {
-      if (!this.profileId) { this.entries = []; this.error = ''; return }
+      if (!this.profileId) { this.entries = []; return false }
       const requestId = ++this.requestId
       const profileId = this.profileId
       const path = this.path
       const query = this.query
       this.loading = true
-      this.error = ''
       try {
         const q = new URLSearchParams({ path, query })
         const data = await api<{ entries: Entry[]; path: string }>(`/api/v1/ps5/${profileId}/entries?${q}`)
@@ -20,11 +19,13 @@ export const usePS5FilesStore = defineStore('ps5Files', {
           this.entries = data.entries
           this.path = data.path
         }
+        return requestId === this.requestId
       } catch (error) {
         if (requestId === this.requestId) {
           this.entries = []
-          this.error = error instanceof Error ? error.message : String(error)
+          throw error
         }
+        return false
       } finally { if (requestId === this.requestId) this.loading = false }
     },
     async directories(path: string) {

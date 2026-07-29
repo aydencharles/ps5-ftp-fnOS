@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ArrowUp, Folder, RefreshCw } from '@lucide/vue'
+import { MessagePlugin } from 'tdesign-vue-next'
 import { api, parentPath } from '../api'
 import { useLibraryStore } from '../stores/library'
 import type { Entry, SourceLocator } from '../types'
@@ -12,7 +13,6 @@ const rootId = ref(props.initial.root_id)
 const currentPath = ref(props.initial.path)
 const entries = ref<Entry[]>([])
 const loading = ref(false)
-const error = ref('')
 
 const directories = computed(() => entries.value.filter((entry) => entry.is_dir).sort((left, right) => left.name.localeCompare(right.name, 'zh-CN', { numeric: true })))
 const currentRoot = computed(() => library.roots.find((root) => root.id === rootId.value))
@@ -21,7 +21,6 @@ const displayPath = computed(() => currentPath.value ? `${currentRoot.value?.lab
 async function load(path = currentPath.value) {
   if (!rootId.value) return
   loading.value = true
-  error.value = ''
   try {
     const query = new globalThis.URLSearchParams({ root_id: rootId.value, path })
     const data = await api<{ entries: Entry[]; path: string }>(`/api/v1/library/entries?${query}`)
@@ -29,7 +28,8 @@ async function load(path = currentPath.value) {
     entries.value = data.entries || []
     emit('change', { root_id: rootId.value, path: currentPath.value })
   } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : String(reason)
+    entries.value = []
+    await MessagePlugin.error(reason instanceof Error ? reason.message : String(reason))
   } finally { loading.value = false }
 }
 
@@ -50,7 +50,6 @@ onMounted(() => { void load() })
       <t-button variant="text" size="small" :disabled="!currentPath" @click="load(parentPath(currentPath))"><ArrowUp :size="15" />上一级</t-button>
       <t-button variant="text" size="small" @click="load()"><RefreshCw :size="14" />刷新</t-button>
     </div>
-    <t-alert v-if="error" theme="error" :message="error" />
     <div class="local-picker-list" :class="{ 'is-loading': loading }">
       <button v-for="entry in directories" :key="entry.path" type="button" @click="load(entry.path)">
         <Folder :size="17" /><span>{{ entry.name }}</span><small>打开</small>
