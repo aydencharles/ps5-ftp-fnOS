@@ -3,7 +3,7 @@ import { api } from '../api'
 import type { Entry, LibraryRoot } from '../types'
 
 export const useLibraryStore = defineStore('library', {
-  state: () => ({ roots: [] as LibraryRoot[], rootId: '', path: '', entries: [] as Entry[], query: '', hidden: false, loading: false, error: '', requestId: 0 }),
+  state: () => ({ roots: [] as LibraryRoot[], rootId: '', path: '', entries: [] as Entry[], query: '', hidden: false, loading: false, requestId: 0 }),
   getters: {
     storageRoots: (state) => state.roots.filter((root) => root.kind === 'volume'),
   },
@@ -14,23 +14,24 @@ export const useLibraryStore = defineStore('library', {
       if (!storageRoots.some((root) => root.id === this.rootId)) this.rootId = storageRoots[0]?.id || ''
     },
     async load() {
-      if (!this.rootId) { this.entries = []; this.error = ''; return }
+      if (!this.rootId) { this.entries = []; return false }
       const requestId = ++this.requestId
       const rootId = this.rootId
       const path = this.path
       const query = this.query
       const hidden = this.hidden
       this.loading = true
-      this.error = ''
       try {
         const q = new URLSearchParams({ root_id: rootId, path, query, hidden: hidden ? '1' : '0' })
         const data = await api<{ entries: Entry[] }>(`/api/v1/library/entries?${q}`)
         if (requestId === this.requestId) this.entries = data.entries
+        return requestId === this.requestId
       } catch (error) {
         if (requestId === this.requestId) {
           this.entries = []
-          this.error = error instanceof Error ? error.message : String(error)
+          throw error
         }
+        return false
       } finally {
         if (requestId === this.requestId) this.loading = false
       }

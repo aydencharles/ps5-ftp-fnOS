@@ -105,7 +105,6 @@ const basePath = computed(() => isSource.value ? '' : normalizeRemotePath(profil
 const currentPath = computed(() => isSource.value ? library.path : files.path)
 const browserEntries = computed(() => isSource.value ? library.entries : files.entries)
 const browserLoading = computed(() => isSource.value ? library.loading : files.loading)
-const browserError = computed(() => isSource.value ? library.error : files.error)
 const browserReady = computed(() => isSource.value ? Boolean(library.rootId) : Boolean(files.profileId))
 const visibleEntries = computed(() => isPicker.value ? browserEntries.value.filter((entry) => entry.is_dir) : browserEntries.value)
 const selectedEntries = computed(() => {
@@ -234,7 +233,6 @@ async function resetProfile(id: string) {
   historyIndex.value = -1
   if (!id) {
     files.entries = []
-    files.error = ''
     files.path = '/'
     return
   }
@@ -252,17 +250,26 @@ async function navigate(path: string, record = true) {
     const normalized = normalizeRemotePath(path || basePath.value)
     files.path = isInsideBase(normalized, basePath.value) ? normalized : basePath.value
   }
-  if (isSource.value) await library.load()
-  else await files.load()
+  const loaded = await loadBrowser()
+  if (!loaded) return
   if (isLocalPicker.value) {
     pickDirectoryPath(library.path)
   } else if (isDestination.value) {
     pickDirectoryPath(files.path)
   }
-  if (browserError.value || !record) return
+  if (!record) return
   history.value = history.value.slice(0, historyIndex.value + 1)
   if (history.value[history.value.length - 1] !== currentPath.value) history.value.push(currentPath.value)
   historyIndex.value = history.value.length - 1
+}
+
+async function loadBrowser() {
+  try {
+    return isSource.value ? await library.load() : await files.load()
+  } catch (error) {
+    await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+    return false
+  }
 }
 
 async function goHistory(offset: number) {
@@ -343,7 +350,7 @@ function isPickerTarget(entry: Entry) {
 
 function toggleHidden() {
   library.hidden = !library.hidden
-  void library.load()
+  void loadBrowser()
 }
 
 function changeSort(key: SortKey) {
@@ -676,7 +683,7 @@ onBeforeUnmount(() => {
         <t-button variant="text" size="small" title="后退" aria-label="后退" :disabled="!canBack" @click="goHistory(-1)"><ArrowLeft :size="16" /></t-button>
         <t-button variant="text" size="small" title="前进" aria-label="前进" :disabled="!canForward" @click="goHistory(1)"><ArrowRight :size="16" /></t-button>
         <t-button variant="text" size="small" title="返回上级" aria-label="返回上级" :disabled="atBase" @click="goUp"><ArrowUp :size="16" /></t-button>
-        <t-button variant="text" size="small" title="刷新" aria-label="刷新" :disabled="!browserReady" @click="isSource ? library.load() : files.load()"><RefreshCw :size="15" /></t-button>
+        <t-button variant="text" size="small" title="刷新" aria-label="刷新" :disabled="!browserReady" @click="loadBrowser"><RefreshCw :size="15" /></t-button>
       </div>
       <nav class="station-breadcrumb" :aria-label="isSource ? 'fnOS 当前路径' : 'PS5 当前路径'" data-testid="ps5-breadcrumb">
         <template v-for="(crumb, index) in breadcrumbs" :key="crumb.path">
@@ -684,8 +691,8 @@ onBeforeUnmount(() => {
           <button :class="{ 'is-current': index === breadcrumbs.length - 1 }" @click="navigate(crumb.path)">{{ crumb.label }}</button>
         </template>
       </nav>
-      <t-input v-if="isSource" v-model="library.query" clearable placeholder="搜索当前文件夹" class="station-search" @enter="library.load()" @clear="library.load()" />
-      <t-input v-else v-model="files.query" clearable placeholder="搜索当前文件夹" class="station-search" @enter="clearSelection(); files.load()" @clear="files.load()" />
+      <t-input v-if="isSource" v-model="library.query" clearable placeholder="搜索当前文件夹" class="station-search" @enter="loadBrowser" @clear="loadBrowser" />
+      <t-input v-else v-model="files.query" clearable placeholder="搜索当前文件夹" class="station-search" @enter="clearSelection(); loadBrowser()" @clear="loadBrowser" />
     </div>
 
     <div v-if="!isPicker" class="station-actions">
@@ -707,8 +714,6 @@ onBeforeUnmount(() => {
         <span v-if="selectedEntries.length > 1 && !canDelete" class="selection-warning">包含文件夹时请逐个删除</span>
       </template>
     </div>
-
-    <t-alert v-if="browserError" theme="error" :message="browserError" class="station-error" />
 
     <div class="station-table-wrap" @click="handleTableBackgroundClick">
       <table :class="['station-table', { 'is-destination-table': isPicker }]">

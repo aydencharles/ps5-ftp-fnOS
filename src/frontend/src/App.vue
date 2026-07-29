@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Settings } from '@lucide/vue'
+import { MessagePlugin } from 'tdesign-vue-next'
 import FnOSIcon from './components/FnOSIcon.vue'
 import PlayStationIcon from './components/PlayStationIcon.vue'
 import TaskCenter from './components/TaskCenter.vue'
@@ -19,6 +20,10 @@ const library = useLibraryStore()
 const tasks = useTasksStore()
 const extractions = useExtractionTasksStore()
 
+async function showError(error: unknown) {
+  await MessagePlugin.error(error instanceof Error ? error.message : String(error))
+}
+
 watch(() => extractions.items, (current, previous) => {
   const oldStates = new Map((previous || []).map((task) => [task.id, task.state]))
   const affectsCurrentDirectory = current.some((task) => {
@@ -26,7 +31,7 @@ watch(() => extractions.items, (current, previous) => {
     return (task.source.root_id === library.rootId && parentPath(task.source.path) === library.path)
       || (task.destination_parent.root_id === library.rootId && task.destination_parent.path === library.path)
   })
-  if (affectsCurrentDirectory) void library.load()
+  if (affectsCurrentDirectory) void library.load().catch(showError)
 })
 
 const pageInfo = computed(() => {
@@ -52,6 +57,7 @@ onMounted(async () => {
     extractions.connect()
   } catch (error) {
     system.error = error instanceof Error ? error.message : String(error)
+    await MessagePlugin.error(system.error)
   }
 })
 onBeforeUnmount(() => { tasks.stream?.close(); extractions.stream?.close() })
@@ -79,8 +85,7 @@ onBeforeUnmount(() => { tasks.stream?.close(); extractions.stream?.close() })
         </div>
         <span class="network-note">仅限可信局域网</span>
       </div>
-      <t-alert v-if="system.error" theme="error" :message="system.error" />
-      <router-view v-else />
+      <router-view />
     </main>
     <TaskCenter />
   </div>
