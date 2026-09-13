@@ -88,7 +88,7 @@ func TestInterruptInFlightKeepsQueued(t *testing.T) {
 }
 
 func TestNormalizeRemotePath(t *testing.T) {
-	for _, bad := range []string{"/data/../system", "../data", "/a/../../b"} {
+	for _, bad := range []string{"/data/../system", "../data", "/a/../../b", "/data/\x00secret"} {
 		if _, err := NormalizeRemotePath(bad); err == nil {
 			t.Fatalf("accepted %q", bad)
 		}

@@ -155,7 +155,7 @@ describe('File Browser', () => {
     ])
   })
 
-  it('shows PS5 connection failures as a global message instead of page content', async () => {
+  it('shows a disconnected empty state instead of an empty folder after a connection failure', async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: false,
       status: 400,
@@ -166,7 +166,70 @@ describe('File Browser', () => {
     await flushPromises()
 
     expect(MessagePlugin.error).toHaveBeenCalledWith('无法连接到 PS5')
-    expect(wrapper.text()).not.toContain('无法连接到 PS5')
+    expect(wrapper.get('[data-testid="ps5-disconnected-state"]').text()).toContain('PS5 连接已断开')
+    expect(wrapper.get('[data-testid="ps5-disconnected-state"]').text()).toContain('无法连接到 PS5')
+    expect(wrapper.text()).not.toContain('这个文件夹是空的')
+    expect(wrapper.text()).not.toContain('当前目录没有子文件夹')
+    expect(usePS5FilesStore().connection).toBe('disconnected')
+  })
+
+  it('keeps the last connected directory when a later listing fails', async () => {
+    const wrapper = mountDestination()
+    await flushPromises()
+    expect(usePS5FilesStore().connection).toBe('connected')
+    expect(usePS5FilesStore().path).toBe('/data/homebrew')
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ code: 2001, message: '无法连接到 PS5', data: null }),
+    } as Response)
+    await wrapper.get('tr[data-entry-path="/data/homebrew/Games"]').trigger('dblclick')
+    await flushPromises()
+
+    expect(usePS5FilesStore().connection).toBe('disconnected')
+    expect(usePS5FilesStore().path).toBe('/data/homebrew')
+    expect(wrapper.get('[data-testid="ps5-breadcrumb"]').text()).toBe('客厅 PS5/data/homebrew')
+    expect(wrapper.find('[data-testid="ps5-disconnected-state"]').exists()).toBe(true)
+  })
+
+  it('shows the live connection status on the PS5 device bar', async () => {
+    const wrapper = mountManage()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="ps5-connection-status"]').text()).toBe('已连接')
+    expect(wrapper.get('[data-testid="ps5-connection-status"]').classes()).toContain('is-connected')
+  })
+
+  it('disables PS5 file mutations while disconnected and reconnects from the empty state', async () => {
+    const wrapper = mountManage()
+    await flushPromises()
+    const createButton = () => wrapper.findAll('.station-actions button').find((button) => button.text().includes('新建文件夹'))!
+
+    expect(createButton().attributes('disabled')).toBeUndefined()
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ code: 2001, message: '无法连接到 PS5', data: null }),
+    } as Response)
+    await wrapper.findAll('.navigation-buttons button').find((button) => button.attributes('title') === '刷新')!.trigger('click')
+    await flushPromises()
+
+    expect(usePS5FilesStore().connection).toBe('disconnected')
+    expect(createButton().attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="ps5-connection-status"]').text()).toBe('未连接')
+
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      path: '/',
+      entries: [{ name: 'Games', path: '/Games', is_dir: true, size: 0 }],
+    }))
+    await wrapper.get('[data-testid="ps5-disconnected-state"] button').trigger('click')
+    await flushPromises()
+
+    expect(usePS5FilesStore().connection).toBe('connected')
+    expect(createButton().attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid="ps5-connection-status"]').text()).toBe('已连接')
   })
 
   it('clears the remote browser without requesting an empty or deleted profile id', async () => {

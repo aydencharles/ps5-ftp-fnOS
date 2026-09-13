@@ -153,7 +153,14 @@ button, input { font: inherit; }
 .browser-devicebar-copy strong, .browser-devicebar-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .browser-devicebar-copy strong { font-size: var(--ui-font-body-large); font-weight: 600; }
 .browser-devicebar-copy small { margin-top: 2px; color: @text-tertiary; font-size: var(--ui-font-caption); }
-.browser-devicebar-control { flex: 0 0 auto; }
+.browser-devicebar-control { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
+.ps5-connection-chip { display: inline-flex; align-items: center; gap: 6px; color: @text-tertiary; font-size: var(--ui-font-caption); white-space: nowrap; }
+.ps5-connection-chip .status-dot { margin-right: 0; }
+.ps5-connection-chip.is-connected { color: @success; }
+.ps5-connection-chip.is-connecting { color: @primary; }
+.ps5-connection-chip.is-disconnected { color: @danger; }
+.status-dot.is-busy { background: @primary; }
+.status-dot.is-down { background: @danger; }
 .browser-devicebar .devicebar-select { width: 220px; }
 .location-select { width: 200px; flex: 0 0 auto; }
 .browser-nav { padding: 0 12px; display: flex; align-items: center; gap: 8px; background: @surface-subtle; border-bottom: 1px solid @border-light; }
@@ -636,6 +643,8 @@ button, input { font: inherit; }
   .browser-pane, .files-page > .file-station { height: 100%; min-height: 0; }
   .browser-devicebar { padding-right: 8px; padding-left: 10px; gap: 8px; }
   .browser-devicebar-copy small { display: none; }
+  .browser-devicebar-control { min-width: 0; }
+  .ps5-connection-chip { font-size: var(--ui-font-tiny); }
   .browser-devicebar .devicebar-select { width: 132px; }
   .station-navigation { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px 8px; padding: 7px 8px; }
   .navigation-buttons { min-width: 0; padding-right: 6px; }

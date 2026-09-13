@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -28,6 +29,31 @@ func TestWriteEndpointsReturnStructuredValidationErrors(t *testing.T) {
 			name: "profile rejects unsupported preset", method: http.MethodPost, path: "/api/v1/profiles",
 			body:      `{"name":"PS5","host":"192.168.1.2","port":2120,"username":"anonymous","password":"","base_path":"/","preset":"other"}`,
 			wantField: "preset",
+		},
+		{
+			name: "profile rejects host with a port suffix", method: http.MethodPost, path: "/api/v1/profiles",
+			body:      `{"name":"PS5","host":"192.168.1.2:2120","port":2120,"username":"anonymous","password":"","base_path":"/","preset":"zftpd"}`,
+			wantField: "host",
+		},
+		{
+			name: "profile rejects invalid IPv6 host", method: http.MethodPost, path: "/api/v1/profiles",
+			body:      `{"name":"PS5","host":"::::","port":2120,"username":"anonymous","password":"","base_path":"/","preset":"zftpd"}`,
+			wantField: "host",
+		},
+		{
+			name: "profile rejects host with a protocol", method: http.MethodPost, path: "/api/v1/profiles",
+			body:      `{"name":"PS5","host":"ftp://192.168.1.2","port":2120,"username":"anonymous","password":"","base_path":"/","preset":"zftpd"}`,
+			wantField: "host",
+		},
+		{
+			name: "profile rejects out-of-range port", method: http.MethodPost, path: "/api/v1/profiles",
+			body:      `{"name":"PS5","host":"192.168.1.2","port":0,"username":"anonymous","password":"","base_path":"/","preset":"zftpd"}`,
+			wantField: "port",
+		},
+		{
+			name: "profile rejects base path traversal", method: http.MethodPost, path: "/api/v1/profiles",
+			body:      `{"name":"PS5","host":"192.168.1.2","port":2120,"username":"anonymous","password":"","base_path":"/data/../system","preset":"zftpd"}`,
+			wantField: "base_path",
 		},
 		{
 			name: "task validates nested sources", method: http.MethodPost, path: "/api/v1/tasks",
@@ -79,6 +105,25 @@ func TestWriteEndpointsReturnStructuredValidationErrors(t *testing.T) {
 				t.Fatalf("expected field %q in response: %s", test.wantField, recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestProfileNormalizesBracketedIPv6AndBasePath(t *testing.T) {
+	handler, store, _ := extractionHandler(t)
+	body := `{"name":"PS5","host":"[::1]","port":2120,"username":"anonymous","password":"","base_path":" /data/ ","preset":"zftpd"}`
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/profiles", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	profiles, err := store.Profiles(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profiles) != 1 || profiles[0].Host != "::1" || profiles[0].BasePath != "/data" {
+		t.Fatalf("profiles=%+v", profiles)
 	}
 }
 

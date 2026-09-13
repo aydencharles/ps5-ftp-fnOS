@@ -556,6 +556,9 @@ func (s *Store) DeleteTask(ctx context.Context, id string) error {
 }
 
 func NormalizeRemotePath(v string) (string, error) {
+	if strings.ContainsRune(v, 0) {
+		return "", errors.New("remote path contains invalid characters")
+	}
 	v = strings.ReplaceAll(v, "\\", "/")
 	if v == "" {
 		return "/", nil

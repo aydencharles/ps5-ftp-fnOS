@@ -31,9 +31,17 @@ type profileRequest struct {
 
 func (r *profileRequest) normalize() {
 	r.Name = strings.TrimSpace(r.Name)
-	r.Host = strings.TrimSpace(r.Host)
+	r.Host = unwrapFTPHost(strings.TrimSpace(r.Host))
 	r.Username = strings.TrimSpace(r.Username)
 	r.Preset = strings.TrimSpace(r.Preset)
+	r.BasePath = strings.TrimSpace(r.BasePath)
+}
+
+func unwrapFTPHost(host string) string {
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") && len(host) > 2 {
+		return host[1 : len(host)-1]
+	}
+	return host
 }
 
 func (r profileRequest) profile(id string) domain.Profile {

@@ -9,6 +9,8 @@ export interface Profile {
   preset: 'zftpd' | 'ftpsrv' | 'custom'
 }
 
+export type PS5ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected'
+
 export type ConnectionCheckStatus = 'pending' | 'passed' | 'failed' | 'skipped'
 export interface ConnectionCheck {
   id: 'resolve' | 'connect' | 'authenticate' | 'directory'

@@ -7,6 +7,7 @@ import ConnectionTestDialog from '../components/ConnectionTestDialog.vue'
 import InterfaceSettings from '../components/InterfaceSettings.vue'
 import PlayStationIcon from '../components/PlayStationIcon.vue'
 import { notifyError } from '../errorFeedback'
+import { applyProfileFieldErrors, normalizeProfileForm, profileFormRules } from '../formValidation'
 import { useProfilesStore } from '../stores/profiles'
 import { useSystemStore } from '../stores/system'
 import type { Profile } from '../types'
@@ -18,37 +19,7 @@ const testVisible = ref(false)
 const testingProfile = ref<Profile | null>(null)
 const form = reactive<Partial<Profile>>({ name:'', host:'', port:2120, username:'anonymous', password:'', base_path:'/', preset:'zftpd' })
 const profileForm = ref<FormInstanceFunctions>()
-const profileRules: FormRules = {
-  name: [
-    { required: true, whitespace: true, message: '请输入配置名称', trigger: 'blur' },
-    { max: 100, message: '名称不能超过 100 个字符', trigger: 'blur' },
-  ],
-  preset: [{ required: true, enum: ['zftpd', 'ftpsrv', 'custom'], message: '请选择服务器预设', trigger: 'change' }],
-  host: [
-    { required: true, whitespace: true, message: '请输入 IP 或主机名', trigger: 'blur' },
-    { max: 255, message: '主机名不能超过 255 个字符', trigger: 'blur' },
-    {
-      validator: (value) => {
-        if (typeof value !== 'string' || /[\s/\\[\]]/.test(value)) return false
-        if (!value.includes(':')) return !value.includes('%')
-        return value.split(':').length > 2 && /^[0-9a-f:.]+(?:%[a-z0-9._-]+)?$/i.test(value)
-      },
-      message: '请输入不带协议和端口的 IP 或主机名',
-      trigger: 'blur',
-    },
-  ],
-  port: [
-    { required: true, message: '请输入端口', trigger: 'change' },
-    { number: true, min: 1, max: 65535, message: '端口必须在 1 到 65535 之间', trigger: 'change' },
-  ],
-  username: [{ max: 255, message: '用户名不能超过 255 个字符', trigger: 'blur' }],
-  password: [{ max: 1024, message: '密码不能超过 1024 个字符', trigger: 'blur' }],
-  base_path: [
-    { required: true, whitespace: true, message: '请输入基础目录', trigger: 'blur' },
-    { max: 4096, message: '基础目录不能超过 4096 个字符', trigger: 'blur' },
-    { validator: (value) => typeof value === 'string' && !value.replaceAll('\\', '/').split('/').includes('..'), message: '基础目录不能包含 .. 路径段', trigger: 'blur' },
-  ],
-}
+const profileRules: FormRules = profileFormRules
 
 function edit(profile?: Profile) {
   Object.assign(form, { id:'', name:'', host:'', port:2120, username:'anonymous', password:'', base_path:'/', preset:'zftpd' }, profile || {})
@@ -59,8 +30,13 @@ function edit(profile?: Profile) {
 function presetChanged(value: string) { if (value === 'zftpd') form.port = 2120; if (value === 'ftpsrv') form.port = 2121 }
 async function save() {
   if (await profileForm.value?.validate() !== true) return
-  try { await profiles.save(form); visible.value = false; await MessagePlugin.success('PS5 配置已保存') }
-  catch (error) { await notifyError(error) }
+  const payload = normalizeProfileForm(form)
+  Object.assign(form, payload)
+  try { await profiles.save(payload); visible.value = false; await MessagePlugin.success('PS5 配置已保存') }
+  catch (error) {
+    applyProfileFieldErrors(profileForm.value, error)
+    await notifyError(error)
+  }
 }
 async function remove(profile: Profile) {
   const dialog = DialogPlugin.confirm({ header:'删除 PS5 配置？', body:`将删除 ${profile.name} 及其任务记录。`, onConfirm:async()=>{ await profiles.remove(profile.id); dialog.destroy() } })
@@ -108,9 +84,9 @@ function test(profile: Profile) {
         <t-form-item name="name" label="名称"><t-input v-model="form.name" placeholder="例如：客厅 PS5" /></t-form-item>
         <t-form-item name="preset" label="服务器预设"><t-select v-model="form.preset" :options="[{label:'zftpd',value:'zftpd'},{label:'ftpsrv',value:'ftpsrv'},{label:'自定义',value:'custom'}]" @change="presetChanged" /></t-form-item>
         <t-form-item name="host" label="IP / 主机名"><t-input v-model="form.host" placeholder="192.168.1.50" /></t-form-item>
-        <t-form-item name="port" label="端口"><t-input-number v-model="form.port" :min="1" :max="65535" /></t-form-item>
+        <t-form-item name="port" label="端口"><t-input-number v-model="form.port" :min="1" :max="65535" :decimal-places="0" :allow-input-over-limit="false" /></t-form-item>
         <t-form-item name="username" label="用户名"><t-input v-model="form.username" /></t-form-item>
-        <t-form-item name="password" label="密码"><t-input v-model="form.password" type="password" placeholder="留空则保持原密码" /></t-form-item>
+        <t-form-item name="password" label="密码"><t-input v-model="form.password" type="password" :placeholder="form.id ? '留空则保持原密码' : '可留空'" /></t-form-item>
         <t-form-item class="span-two" name="base_path" label="基础目录"><t-input v-model="form.base_path" placeholder="/" /></t-form-item>
       </div>
     </t-form>

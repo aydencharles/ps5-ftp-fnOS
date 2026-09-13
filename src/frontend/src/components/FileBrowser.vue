@@ -107,6 +107,14 @@ const currentPath = computed(() => isSource.value ? library.path : files.path)
 const browserEntries = computed(() => isSource.value ? library.entries : files.entries)
 const browserLoading = computed(() => isSource.value ? library.loading : files.loading)
 const browserReady = computed(() => isSource.value ? Boolean(library.rootId) : Boolean(files.profileId))
+const ps5Connected = computed(() => isSource.value || files.connection === 'connected')
+const ps5Disconnected = computed(() => !isSource.value && files.connection === 'disconnected')
+const connectionLabel = computed(() => ({
+  idle: '未连接',
+  connecting: '连接中',
+  connected: '已连接',
+  disconnected: '未连接',
+}[files.connection]))
 const visibleEntries = computed(() => isPicker.value ? browserEntries.value.filter((entry) => entry.is_dir) : browserEntries.value)
 const selectedEntries = computed(() => {
   const selected = new Set(selection.value.selectedKeys)
@@ -227,24 +235,26 @@ async function resetLibrary(id: string) {
 }
 
 async function resetProfile(id: string) {
-  files.profileId = id
-  files.query = ''
   clearSelection()
   history.value = []
   historyIndex.value = -1
   if (!id) {
-    files.entries = []
-    files.path = '/'
+    files.prepare('')
     return
   }
   const requested = normalizeRemotePath(props.modelValue)
   const initialPath = isDestination.value && isInsideBase(requested, basePath.value) ? requested : basePath.value
+  files.prepare(id, initialPath)
+  history.value = [initialPath]
+  historyIndex.value = 0
   if (isDestination.value && requested !== initialPath) emit('update:modelValue', initialPath)
   await navigate(initialPath, true)
 }
 
 async function navigate(path: string, record = true) {
   if (!isPicker.value) clearSelection()
+  const previousPath = files.path
+  const previousConnection = files.connection
   if (isSource.value) {
     library.path = normalizeLocalPath(path)
   } else {
@@ -252,12 +262,12 @@ async function navigate(path: string, record = true) {
     files.path = isInsideBase(normalized, basePath.value) ? normalized : basePath.value
   }
   const loaded = await loadBrowser()
-  if (!loaded) return
-  if (isLocalPicker.value) {
-    pickDirectoryPath(library.path)
-  } else if (isDestination.value) {
-    pickDirectoryPath(files.path)
+  if (!loaded) {
+    if (!isSource.value && previousConnection === 'connected' && previousPath !== files.path) files.path = previousPath
+    return
   }
+  if (isLocalPicker.value) pickDirectoryPath(library.path)
+  else if (isDestination.value) pickDirectoryPath(files.path)
   if (!record) return
   history.value = history.value.slice(0, historyIndex.value + 1)
   if (history.value[history.value.length - 1] !== currentPath.value) history.value.push(currentPath.value)
@@ -676,7 +686,18 @@ onBeforeUnmount(() => {
       :subtitle="profiles.selected ? `${profiles.selected.host}:${profiles.selected.port} · ${profiles.selected.preset}` : '请先在设置中添加连接'"
     >
       <template #icon><PlayStationIcon :size="18" /></template>
-      <template #control><t-select v-model="profiles.selectedId" :options="profiles.items.map(profile => ({ label: profile.name, value: profile.id }))" placeholder="选择 PS5" class="station-profile-select devicebar-select" /></template>
+      <template #control>
+        <span
+          v-if="profiles.selected"
+          class="ps5-connection-chip"
+          :class="`is-${files.connection}`"
+          data-testid="ps5-connection-status"
+        >
+          <span :class="['status-dot', files.connection === 'connected' && 'is-ready', files.connection === 'connecting' && 'is-busy', files.connection === 'disconnected' && 'is-down']" />
+          {{ connectionLabel }}
+        </span>
+        <t-select v-model="profiles.selectedId" :options="profiles.items.map(profile => ({ label: profile.name, value: profile.id }))" placeholder="选择 PS5" class="station-profile-select devicebar-select" />
+      </template>
     </BrowserDeviceBar>
 
     <div class="station-navigation">
@@ -705,12 +726,12 @@ onBeforeUnmount(() => {
         <span class="selection-note">已选择 {{ selectionCount }} 项</span>
       </template>
       <template v-else>
-        <t-button theme="primary" size="small" :disabled="!files.profileId" @click="showCreate"><FolderPlus :size="15" />新建文件夹</t-button>
+        <t-button theme="primary" size="small" :disabled="!ps5Connected" @click="showCreate"><FolderPlus :size="15" />新建文件夹</t-button>
         <span class="action-separator" />
-        <t-button variant="text" size="small" :disabled="!selectedEntries.length" @click="copyToFnOS"><Download :size="15" />复制到飞牛</t-button>
-        <t-button variant="text" size="small" :disabled="!singleSelection" @click="showRename"><Pencil :size="14" />重命名</t-button>
-        <t-button variant="text" size="small" :disabled="!selectedEntries.length" @click="showMove"><FolderInput :size="15" />移动到</t-button>
-        <t-button theme="danger" variant="text" size="small" :disabled="!canDelete" @click="askDelete"><Trash2 :size="15" />删除</t-button>
+        <t-button variant="text" size="small" :disabled="!ps5Connected || !selectedEntries.length" @click="copyToFnOS"><Download :size="15" />复制到飞牛</t-button>
+        <t-button variant="text" size="small" :disabled="!ps5Connected || !singleSelection" @click="showRename"><Pencil :size="14" />重命名</t-button>
+        <t-button variant="text" size="small" :disabled="!ps5Connected || !selectedEntries.length" @click="showMove"><FolderInput :size="15" />移动到</t-button>
+        <t-button theme="danger" variant="text" size="small" :disabled="!ps5Connected || !canDelete" @click="askDelete"><Trash2 :size="15" />删除</t-button>
         <span v-if="selectedEntries.length" class="selection-note">已选择 {{ selectedEntries.length }} 项</span>
         <span v-if="selectedEntries.length > 1 && !canDelete" class="selection-warning">包含文件夹时请逐个删除</span>
       </template>
@@ -760,6 +781,7 @@ onBeforeUnmount(() => {
           </template>
           <tr v-if="browserLoading" class="station-empty-row"><td :colspan="isPicker ? 2 : 5"><div class="station-empty">正在读取文件…</div></td></tr>
           <tr v-else-if="!browserReady" class="station-empty-row"><td :colspan="isPicker ? 2 : 5"><div class="station-empty"><strong>{{ isSource ? '没有可用的存储空间' : '还没有 PS5 连接' }}</strong><span>{{ isSource ? '请检查 fnOS 存储卷是否已挂载' : '请先在设置中添加并测试 FTP 连接' }}</span><t-button v-if="!isSource" variant="outline" size="small" @click="$router.push('/settings')">前往设置</t-button></div></td></tr>
+          <tr v-else-if="ps5Disconnected" class="station-empty-row"><td :colspan="isPicker ? 2 : 5"><div class="station-empty" data-testid="ps5-disconnected-state"><strong>PS5 连接已断开</strong><span>{{ files.lastError || '请确认 PS5 已开机且 FTP 服务正在运行' }}</span><t-button variant="outline" size="small" @click="loadBrowser">重新连接</t-button></div></td></tr>
           <tr v-else-if="!sortedEntries.length" class="station-empty-row"><td :colspan="isPicker ? 2 : 5"><div class="station-empty"><strong>{{ (isSource ? library.query : files.query) ? '没有匹配的项目' : isPicker ? '当前目录没有子文件夹' : '这个文件夹是空的' }}</strong><span>{{ (isSource ? library.query : files.query) ? '请尝试其他搜索词' : isSource ? '可以返回上级选择其他位置' : '可以在这里新建文件夹' }}</span></div></td></tr>
         </tbody>
       </table>
@@ -773,7 +795,9 @@ onBeforeUnmount(() => {
         <span>目标目录</span><strong class="destination-path">{{ pickerTargetPath || '根目录' }}</strong>
       </template>
       <template v-else>
-        <span>{{ files.entries.length }} 个项目</span>
+        <span v-if="files.connection === 'disconnected'">未连接</span>
+        <span v-else-if="files.connection === 'connecting'">正在连接</span>
+        <span v-else>{{ files.entries.length }} 个项目</span>
         <span v-if="selectedEntries.length">已选择 {{ selectedEntries.length }} 项<span v-if="selectedSize">，{{ formatBytes(selectedSize) }}</span></span>
       </template>
       <span class="status-path">当前：{{ currentPath || '根目录' }}</span>

@@ -149,7 +149,7 @@ func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 func validateProfile(p *domain.Profile) error {
 	base, err := store.NormalizeRemotePath(p.BasePath)
 	if err != nil {
-		return err
+		return &requestValidationError{fields: map[string]string{"base_path": "参数 base_path 格式不正确"}, first: "参数 base_path 格式不正确"}
 	}
 	p.BasePath = base
 	return nil

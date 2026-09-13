@@ -12,6 +12,7 @@ import FnOSIcon from '../components/FnOSIcon.vue'
 import PlayStationIcon from '../components/PlayStationIcon.vue'
 import { useLibraryStore } from '../stores/library'
 import { useProfilesStore } from '../stores/profiles'
+import { usePS5FilesStore } from '../stores/ps5Files'
 import { useTasksStore } from '../stores/tasks'
 import { useExtractionTasksStore } from '../stores/extractions'
 import type { Entry, SourceLocator } from '../types'
@@ -19,6 +20,7 @@ import { optionalPasswordRules } from '../formValidation'
 
 const library = useLibraryStore()
 const profiles = useProfilesStore()
+const files = usePS5FilesStore()
 const tasks = useTasksStore()
 const extractions = useExtractionTasksStore()
 type ConflictPolicy = 'smart' | 'overwrite' | 'fail'
@@ -50,6 +52,13 @@ const selectedLabel = computed(() => {
   return selectedSources.value.length === 1 ? name : `${name} 等 ${selectedSources.value.length} 项`
 })
 const profileLabel = computed(() => profiles.selected?.name || '尚未选择 PS5')
+const destinationReady = computed(() => profiles.selectedId && files.connection === 'connected')
+const destinationConfirmLabel = computed(() => {
+  if (!profiles.selectedId) return '请选择 PS5'
+  if (files.connection === 'connecting') return '正在连接'
+  if (files.connection !== 'connected') return 'PS5 未连接'
+  return '下一步'
+})
 const conflictLabel = computed(() => ({ smart: '智能处理同名文件', overwrite: '全部重新上传', fail: '遇到同名文件停止' })[conflict.value])
 const extractionFolderName = computed(() => extractSource.value?.name.replace(/\.7z(?:\.001)?$/i, '') || '')
 
@@ -122,7 +131,7 @@ async function submitExtraction() {
     </div>
   </section>
 
-  <t-dialog v-model:visible="destinationPickerVisible" dialog-class-name="transfer-picker-dialog" header="选择 PS5 目标位置" width="960px" :confirm-btn="{ content: profiles.selectedId ? '下一步' : '请选择 PS5', disabled: !profiles.selectedId }" @confirm="confirmDestination">
+  <t-dialog v-model:visible="destinationPickerVisible" dialog-class-name="transfer-picker-dialog" header="选择 PS5 目标位置" width="960px" :confirm-btn="{ content: destinationConfirmLabel, disabled: !destinationReady }" @confirm="confirmDestination">
     <section class="transfer-destination-picker">
       <header>
         <div><strong>PS5 目的地</strong><small>此处浏览的位置就是接收文件的位置</small></div>
